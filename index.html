@@ -119,7 +119,7 @@
        ========================================================================== -->
   <script>
     // ⚠️ QUAN TRỌNG: Hãy thay thế đường dẫn URL Web App (đuôi /exec) của bạn vào đây
-    const API_URL = 'URL_WEB_APP_CỦA_BẠN/exec';
+    const API_URL = 'https://script.google.com/macros/s/AKfycbxhngXz5IXZ-Oge8Ro3pkSCs4uzssxQGUbZX5kX4AjUl1fFIj2qWRw7QZRxez8eNrpV/exec';
 
     // Hàm bổ trợ chuyển đổi ẩn/hiển thị giữa các màn hình giao diện công việc
     function showSection(sectionId) {
@@ -130,6 +130,91 @@
       });
     }
 
+    // Hàm helper dùng chung để điều khiển Loading Overlay & Disable nút
+function setLoading(isLoading) {
+  const loading = document.getElementById('loadingOverlay');
+  if (loading) loading.style.display = isLoading ? 'block' : 'none';
+  
+  // Khóa tất cả các nút bấm khi đang gọi API
+  const buttons = document.querySelectorAll('button');
+  buttons.forEach(btn => btn.disabled = isLoading);
+}
+
+// Bổ sung xử lý gửi đồng ý (submitConsent) chống bấm đúp
+function submitConsent() {
+  const token = localStorage.getItem('empToken');
+  const consentYes = document.getElementById('consentYes').checked;
+  const consentNo = document.getElementById('consentNo').checked;
+
+  if (!consentYes && !consentNo) {
+    alert('Vui lòng chọn Đồng ý hoặc Không đồng ý.');
+    return;
+  }
+
+  setLoading(true);
+
+  fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'saveConsent',
+      token: token,
+      consent: consentYes
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.ok) {
+      if (data.next === 'form') {
+        showSection('formSection');
+      } else {
+        alert(data.message || 'Cảm ơn bạn đã xác nhận.');
+        showSection('employeeLoginSection');
+      }
+    } else {
+      alert(data.message || 'Xảy ra lỗi khi lưu xác nhận.');
+    }
+  })
+  .catch(err => alert('Lỗi mạng: ' + err.message))
+  .finally(() => setLoading(false));
+}
+
+// Bổ sung xử lý submit form kê khai
+function submitForm() {
+  const token = localStorage.getItem('empToken');
+  
+  // Lấy giá trị các trường
+  const payload = {
+    action: 'submitForm',
+    token: token,
+    consent: true,
+    ngaySinh: document.getElementById('ngaySinh') ? document.getElementById('ngaySinh').value : '',
+    gioiTinh: document.getElementById('gioiTinh') ? document.getElementById('gioiTinh').value : '',
+    danToc: document.getElementById('danToc') ? document.getElementById('danToc').value : '',
+    tonGiao: document.getElementById('tonGiao') ? document.getElementById('tonGiao').value : '',
+    diaChiThuongTru: document.getElementById('diaChiThuongTru') ? document.getElementById('diaChiThuongTru').value : '',
+    trinhDoChuyenMon: document.getElementById('trinhDoChuyenMon') ? document.getElementById('trinhDoChuyenMon').value : '',
+    mienGiam: document.getElementById('mienGiam') ? document.getElementById('mienGiam').value : ''
+  };
+
+  setLoading(true);
+
+  fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.ok) {
+      alert('Đã lưu thông tin kê khai thành công!');
+      showSection('employeeLoginSection');
+    } else {
+      alert(data.message || 'Lỗi khi gửi biểu mẫu.');
+    }
+  })
+  .catch(err => alert('Lỗi mạng: ' + err.message))
+  .finally(() => setLoading(false));
+}
+    
     // Hàm gọi xử lý đăng nhập người lao động khi bấm nút "Tiếp tục"
     function handleEmployeeLogin() {
       const cccdValue = document.getElementById('inputCCCD').value.trim();
@@ -291,4 +376,3 @@
     localStorage.removeItem('adminToken');
     showSection('employeeLoginSection');
     }
-     

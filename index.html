@@ -186,6 +186,51 @@ th{background:#f8fafc;position:sticky;top:0}
   button{width:100%}
   .actions{display:grid}
 }
+
+.doc-preview-wrap{
+  width:100%;
+  border:1px solid #d9e2ec;
+  border-radius:14px;
+  overflow:hidden;
+  background:#f8fafc;
+}
+.doc-preview-frame{
+  display:block;
+  width:100%;
+  min-height:680px;
+  border:0;
+  background:#fff;
+}
+.doc-image-wrap{
+  width:100%;
+  text-align:center;
+  border:1px solid #d9e2ec;
+  border-radius:14px;
+  overflow:hidden;
+  background:#f8fafc;
+  padding:10px;
+  box-sizing:border-box;
+}
+.doc-image{
+  display:block;
+  max-width:100%;
+  max-height:900px;
+  height:auto;
+  margin:0 auto;
+  object-fit:contain;
+  border-radius:8px;
+}
+.doc-actions{
+  margin-top:10px;
+  text-align:center;
+}
+.doc-open-link{
+  display:inline-block;
+  padding:8px 12px;
+  border-radius:9px;
+  text-decoration:none;
+}
+
 </style>
 </head>
 
@@ -438,28 +483,91 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxhngXz5IXZ-Oge8Ro3pkSC
 const CONSENT_DOCUMENT_URL = 'https://drive.google.com/file/d/1_wGXJ8WIR01gGgzZLs9RkJSwwFXfgAjf/view?usp=sharing';
 const CONSENT_DOCUMENT_TITLE = 'Công văn / tài liệu liên quan';
 
-function renderConsentDocument() {
-  const box = $('consentDocument');
-  if (!box) return;
-  const url = String(CONSENT_DOCUMENT_URL || '').trim();
 
+function normalizeConsentDocumentUrl(rawUrl) {
+  const raw = String(rawUrl || '').trim();
+  if (!raw) return '';
+
+  // Google Drive: /file/d/FILE_ID/view?... -> /file/d/FILE_ID/preview
+  let m = raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i);
+  if (m) {
+    return 'https://drive.google.com/file/d/' + m[1] + '/preview';
+  }
+
+  // Google Drive: /open?id=FILE_ID or other ?id=FILE_ID form
+  if (/drive\.google\.com/i.test(raw)) {
+    m = raw.match(/[?&]id=([^&#]+)/i);
+    if (m) {
+      return 'https://drive.google.com/file/d/' + m[1] + '/preview';
+    }
+  }
+
+  return raw;
+}
+
+function renderConsentDocument() {
+  const box = document.getElementById('consentDocument');
+  if (!box) return;
+
+  const rawUrl = String(CONSENT_DOCUMENT_URL || '').trim();
+  const url = normalizeConsentDocumentUrl(rawUrl);
   if (!url) {
-    box.innerHTML = '<div class="document-empty">Chưa cấu hình file công văn. Hãy đặt file vào thư mục <strong>assets</strong> và sửa biến <strong>CONSENT_DOCUMENT_URL</strong>.</div>';
+    box.innerHTML = '';
     return;
   }
 
+  const safeUrl = escapeHtml(url);
   const lower = url.toLowerCase().split('?')[0];
-  let viewer = '';
-  if (lower.endsWith('.pdf')) {
-    viewer = '<iframe class="document-viewer" src="' + escapeHtml(url) + '" title="' + escapeHtml(CONSENT_DOCUMENT_TITLE) + '"></iframe>';
-  } else if (/\.(jpg|jpeg|png|webp)$/.test(lower)) {
-    viewer = '<img class="document-image" src="' + escapeHtml(url) + '" alt="' + escapeHtml(CONSENT_DOCUMENT_TITLE) + '">';
-  } else {
-    viewer = '<div class="document-empty">Định dạng tài liệu chưa xác định. Anh/Chị có thể bấm nút bên dưới để mở file.</div>';
-  }
 
-  box.innerHTML = viewer +
-    '<div class="document-actions"><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">Mở tài liệu trong tab mới</a></div>';
+  // Google Drive preview and PDF: show inline preview.
+  const isDrivePreview = /drive\.google\.com\/file\/d\/[^/]+\/preview/i.test(url);
+  const isPdf = lower.endsWith('.pdf');
+
+  // Images: show directly. JPG can be switched to PDF later without changing this code.
+  const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(lower);
+
+  if (isDrivePreview || isPdf) {
+    box.innerHTML = `
+      <div class="doc-preview-wrap">
+        <iframe
+          src="${safeUrl}"
+          title="${escapeHtml(CONSENT_DOCUMENT_TITLE)}"
+          class="doc-preview-frame"
+          loading="lazy"
+          allow="autoplay">
+        </iframe>
+      </div>
+      <div class="doc-actions">
+        <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="doc-open-link">
+          ↗ Mở tài liệu trong tab mới
+        </a>
+      </div>
+    `;
+  } else if (isImage) {
+    box.innerHTML = `
+      <div class="doc-image-wrap">
+        <img
+          src="${safeUrl}"
+          alt="${escapeHtml(CONSENT_DOCUMENT_TITLE)}"
+          class="doc-image"
+          loading="lazy">
+      </div>
+      <div class="doc-actions">
+        <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="doc-open-link">
+          ↗ Mở hình trong tab mới
+        </a>
+      </div>
+    `;
+  } else {
+    box.innerHTML = `
+      <div class="doc-unsupported">
+        <div>Không thể xem trực tiếp định dạng này.</div>
+        <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="doc-open-link">
+          ↗ Mở tài liệu trong tab mới
+        </a>
+      </div>
+    `;
+  }
 }
 
 

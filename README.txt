@@ -92,3 +92,13 @@ Tuy nhien nen sao luu Spreadsheet truoc khi chuyen sang phien ban moi.
 - Khong kem cong van gia/mau trong goi nay.
 - Dan toc va Ton giao la dropdown, khong bat buoc.
 - Mien/giảm la checkbox dropdown, cho phep chon nhieu; muc 'Khong thuoc...' la lua chon doc lap.
+
+
+CẬP NHẬT HIỂN THỊ CÔNG VĂN / TÀI LIỆU
+- Có thể dùng ảnh JPG/JPEG/PNG/WebP.
+- Có thể đổi sang PDF sau này.
+- Có thể dán link Google Drive dạng:
+  https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+  Hệ thống tự chuyển sang /preview để nhúng trực tiếp trong trang.
+- File Drive cần được chia sẻ quyền xem phù hợp cho người lao động.
+- Không cần sửa phần JavaScript khi chuyển từ JPG sang PDF; chỉ cần đổi CONSENT_DOCUMENT_URL.

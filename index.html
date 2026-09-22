@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Thu thập dữ liệu lý lịch tư pháp</title>
+<button id="loginBtn" onclick="handleLogin()">Đăng nhập</button>
+
+<!-- Hiệu ứng chờ đợi (Loading Spinner) -->
+<div id="loadingOverlay" style="display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.4); color: white; text-align: center; padding-top: 20%; z-index: 9999;">
+  <div class="spinner"></div>
+  <p style="margin-top: 10px; font-weight: bold;">Đang xử lý, vui lòng đợi...</p>
+</div>  
 <style>
 :root{--p:#0b5ed7;--bg:#f4f7fb;--card:#fff;--text:#182230;--muted:#667085;--ok:#087443;--danger:#b42318}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Arial,sans-serif;color:var(--text)}
@@ -18,6 +25,13 @@ button{border:0;border-radius:9px;padding:11px 16px;background:var(--p);color:#f
 .tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:10px;border-bottom:1px solid #eaecf0;text-align:left;white-space:nowrap}th{background:#f9fafb}
 .badge{display:inline-block;padding:4px 8px;border-radius:99px;font-size:12px;font-weight:700}.done{background:#dcfae6;color:#087443}.pending{background:#fff4cc;color:#7a5d00}.refused{background:#fee4e2;color:#b42318}.new{background:#eef2f6;color:#475467}
 @media(max-width:750px){.grid{grid-template-columns:1fr}.statgrid{grid-template-columns:repeat(2,1fr)}}
+/* CSS tạo vòng quay đơn giản */
+.spinner {
+  margin: 0 auto; width: 50px; height: 50px;
+  border: 5px solid #f3f3f3; border-top: 5px solid #3498db;
+  border-radius: 50%; animation: spin 1s linear infinite;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -115,6 +129,42 @@ async function api(action,payload={}){
   return await r.json();
 }
 
+function handleLogin() {
+  const loginBtn = document.getElementById('loginBtn');
+  const loadingOverlay = document.getElementById('loadingOverlay');
+
+  // 1. Bật hiệu ứng chờ và khóa nút bấm
+  loginBtn.disabled = true;
+  loadingOverlay.style.display = 'block';
+
+  fetch('https://script.google.com/macros/s/AKfycbxhngXz5IXZ-Oge8Ro3pkSCs4uzssxQGUbZX5kX4AjUl1fFIj2qWRw7QZRxez8eNrpV/exec', {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'adminLogin',
+      username: '...',
+      password: '...'
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if(data.ok) {
+      alert('Đăng nhập thành công!');
+    } else {
+      alert('Lỗi: ' + data.message);
+    }
+  })
+  .catch(err => {
+    console.error(err);
+    alert('Lỗi kết nối mạng hoặc sập server.');
+  })
+  .finally(() => {
+    // 2. Tắt hiệu ứng chờ và mở khóa nút bấm dù thành công hay thất bại
+    loginBtn.disabled = false;
+    loadingOverlay.style.display = 'none';
+  });
+}
+
+  
 async function employeeLogin(){
   const cccd=$('cccd').value.replace(/\D/g,'');
   if(!cccd){msg('Vui lòng nhập số CCCD.','error');return}

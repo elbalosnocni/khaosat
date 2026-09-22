@@ -304,7 +304,6 @@ function findAdmin_(username) {
   const rows = getSheet_(CONFIG.ADMIN_SHEET).getDataRange().getValues();
   if (rows.length < 2) return null;
   for (let i = 1; i < rows.length; i++) {
-    // SỬA: rows[i][0] nghĩa là chỉ lấy dữ liệu ở Cột đầu tiên (Cột Username) để so sánh
     if (String(rows[i][0]).trim() === username) {
       return {
         row: i + 1, 
@@ -321,63 +320,71 @@ function findAdmin_(username) {
 
 function getEmployeeObjects_() {
   const rows = getSheet_(CONFIG.EMPLOYEE_SHEET).getDataRange().getDisplayValues();
-if (rows.length < 2) return [];
-const h = headerMap_(rows[0]);
-return rows.slice(1).map(r => ({
-MaNV:String(r[h.MaNV] || '').trim(),
-HoTen:String(r[h.HoTen] || '').trim(),
-CCCD:normalizeCCCD_(r[h.CCCD])
-})).filter(x => x.MaNV || x.HoTen || x.CCCD);
+  if (rows.length < 2) return [];
+  const h = headerMap_(rows[0]);
+  return rows.slice(1).map(r => ({
+    MaNV:String(r[h.MaNV] || '').trim(),
+    HoTen:String(r[h.HoTen] || '').trim(),
+    CCCD:normalizeCCCD_(r[h.CCCD])
+  })).filter(x => x.MaNV || x.HoTen || x.CCCD);
 }
+
 function getResponseObjects_() {
-const rows = getSheet_(CONFIG.RESPONSE_SHEET).getDataRange().getValues();
-if (rows.length < 2) return [];
-const h = headerMap_(rows[0]);
-return rows.slice(1).map((r, idx) => {
-const o={};
-o._row = idx + 2; // FIX: Cung cấp chính xác chỉ số dòng thực tế trên trang tính Google Sheet
-Object.keys(h).forEach(k => o[k]=r[h[k]]);
-return o;
-}).filter(r => r.MaNV);
+  const rows = getSheet_(CONFIG.RESPONSE_SHEET).getDataRange().getValues();
+  if (rows.length < 2) return [];
+  const h = headerMap_(rows[0]);
+  return rows.slice(1).map((r, idx) => {
+    const o={};
+    o._row = idx + 2; // Gán thuộc tính vị trí dòng thực tế
+    Object.keys(h).forEach(k => o[k]=r[h[k]]);
+    return o;
+  }).filter(r => r.MaNV);
 }
+
 function findLatestResponseByMaNV_(maNV) {
-const rows = getResponseObjects_().filter(r => String(r.MaNV).trim() === String(maNV).trim());
-if (!rows.length) return null;
-rows.sort((a,b) => new Date(b.UpdatedAt || b.Timestamp) - new Date(a.UpdatedAt || a.Timestamp));
-return rows[0];
+  const rows = getResponseObjects_().filter(r => String(r.MaNV).trim() === String(maNV).trim());
+  if (!rows.length) return null;
+  rows.sort((a,b) => new Date(b.UpdatedAt || b.Timestamp) - new Date(a.UpdatedAt || a.Timestamp));
+  return rows[0];
 }
+
 function upsertResponse_(session, patch, existing) {
-const sh = getSheet_(CONFIG.RESPONSE_SHEET);
-const headers = sh.getRange(1,1,1,sh.getLastColumn()).getDisplayValues()[0];
-const base = {};
-headers.forEach(h => base[h]='');
-base.Timestamp = existing && existing.Timestamp ? existing.Timestamp : new Date();
-base.SubmissionId = existing && existing.SubmissionId ? existing.SubmissionId : Utilities.getUuid();
-base.MaNV = session.maNV;
-base.HoTen = session.hoTen;
-base.CCCD = session.cccd;
-Object.keys(patch).forEach(k => base[k]=patch[k]);
-const row = headers.map(h => base[h] === undefined ? '' : base[h]);
-if (existing && existing._row) {
-// FIX: Bây giờ biểu thức điều kiện này sẽ luôn chạy đúng vì _row đã có giá trị hợp lệ
-sh.getRange(existing.row,1,1,headers.length).setValues([row]);
-} else if (existing) {
-const all = sh.getDataRange().getValues();
-const h = headerMap(all[0]);
-let target = -1;
-for (let i=1;i<all.length;i++) {
-if (String(all[i][h.MaNV]).trim() === String(session.maNV).trim()) {
-if (target < 0 || new Date(all[i][h.UpdatedAt] || all[i][h.Timestamp]) < new Date(all[target][h.UpdatedAt] || all[target][h.Timestamp])) {
-target=i;
+  const sh = getSheet_(CONFIG.RESPONSE_SHEET);
+  const headers = sh.getRange(1,1,1,sh.getLastColumn()).getDisplayValues()[0];
+  const base = {};
+  headers.forEach(h => base[h]='');
+
+  base.Timestamp = existing && existing.Timestamp ? existing.Timestamp : new Date();
+  base.SubmissionId = existing && existing.SubmissionId ? existing.SubmissionId : Utilities.getUuid();
+  base.MaNV = session.maNV;
+  base.HoTen = session.hoTen;
+  base.CCCD = session.cccd;
+  Object.keys(patch).forEach(k => base[k]=patch[k]);
+
+  const row = headers.map(h => base[h] === undefined ? '' : base[h]);
+
+  if (existing && existing._row) {
+    // FIX SỬA LỖI: Gọi chuẩn xác thuộc tính existing._row đã được định nghĩa ở trên
+    sh.getRange(existing._row, 1, 1, headers.length).setValues([row]);
+  } else if (existing) {
+    const all = sh.getDataRange().getValues();
+    // FIX SỬA LỖI: Gọi đúng tên hàm bổ trợ có dấu gạch dưới headerMap_
+    const h = headerMap_(all[0]);
+    let target = -1;
+    for (let i=1;i<all.length;i++) {
+      if (String(all[i][h.MaNV]).trim() === String(session.maNV).trim()) {
+        if (target < 0 || new Date(all[i][h.UpdatedAt] || all[i][h.Timestamp]) < new Date(all[target][h.UpdatedAt] || all[target][h.Timestamp])) {
+          target=i;
+        }
+      }
+    }
+    if (target >= 1) sh.getRange(target+1, 1, 1, headers.length).setValues([row]);
+    else sh.appendRow(row);
+  } else {
+    sh.appendRow(row);
+  }
 }
-}
-}
-if (target >= 1) sh.getRange(target+1,1,1,headers.length).setValues([row]); // FIX: Trỏ chuẩn xác vị trí dòng index
-else sh.appendRow(row);
-} else {
-sh.appendRow(row);
-}
-}
+
 /* ========================= SESSION / SECURITY ========================= */
 function createSession_(type, payload) {
 const token = Utilities.getUuid() + '-' + Utilities.getUuid();

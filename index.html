@@ -7,10 +7,11 @@
 <button id="loginBtn" onclick="handleLogin()">Đăng nhập</button>
 
 <!-- Hiệu ứng chờ đợi (Loading Spinner) -->
-<div id="loadingOverlay" style="display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.4); color: white; text-align: center; padding-top: 20%; z-index: 9999;">
-  <div class="spinner"></div>
-  <p style="margin-top: 10px; font-weight: bold;">Đang xử lý, vui lòng đợi...</p>
-</div>  
+<!-- Bọc toàn bộ vùng hiển thị chờ đợi vào một thẻ div có ID riêng và để mặc định ẩn -->
+<div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; color: white; text-align: center; padding-top: 20vh;">
+  <div>Đang xử lý, vui lòng đợi...</div>
+</div>
+
 <style>
 :root{--p:#0b5ed7;--bg:#f4f7fb;--card:#fff;--text:#182230;--muted:#667085;--ok:#087443;--danger:#b42318}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Arial,sans-serif;color:var(--text)}

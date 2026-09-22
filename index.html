@@ -49,6 +49,45 @@ button{border:0;border-radius:9px;padding:11px 16px;background:var(--p);color:#f
     <input id="cccd" inputmode="numeric" maxlength="12" placeholder="Nhập số CCCD">
     <div class="actions"><button onclick="employeeLogin()">Tiếp tục</button><button class="secondary" onclick="showAdmin()">Đăng nhập Admin</button></div>
   </section>
+function handleEmployeeLogin() {
+  const cccdValue = document.getElementById('inputCCCD').value; // Thay bằng ID ô nhập CCCD của bạn
+  
+  // Lấy thẻ Overlay và nút bấm để điều khiển trạng thái
+  const loading = document.getElementById('loadingOverlay');
+  const btn = document.getElementById('btnTiepTuc'); // Thay bằng ID nút Tiếp tục của bạn
+
+  // BẬT hiệu ứng chờ và khóa nút bấm tránh nhấn đúp
+  loading.style.display = 'block';
+  if(btn) btn.disabled = true;
+
+  fetch('URL_WEB_APP_CỦA_BẠN/exec', {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'employeeLogin',
+      cccd: cccdValue
+    })
+  })
+  .then(res => {
+    if (!res.ok) throw new Error('Mạng không ổn định hoặc lỗi Server');
+    return res.json();
+  })
+  .then(data => {
+    if (data.ok) {
+      localStorage.setItem('empToken', data.token);
+      // Logic chuyển sang màn hình Xác nhận đồng ý...
+    } else {
+      alert(data.message || 'Số CCCD không hợp lệ hoặc không có trong hệ thống.');
+    }
+  })
+  .catch(err => {
+    alert('Không thể kết nối đến máy chủ: ' + err.message);
+  })
+  .finally(() => {
+    // TẮT hiệu ứng chờ và mở khóa nút bấm khi có kết quả (bất kể thành công hay thất bại)
+    loading.style.display = 'none';
+    if(btn) btn.disabled = false;
+  });
+}
 
   <section id="consentCard" class="card hidden">
     <h2>THÔNG BÁO VÀ XÁC NHẬN SỰ ĐỒNG Ý</h2>
@@ -90,6 +129,46 @@ button{border:0;border-radius:9px;padding:11px 16px;background:var(--p);color:#f
     <label>Mật khẩu</label><input id="adminPass" type="password" autocomplete="current-password">
     <div class="actions"><button onclick="adminLogin()">Đăng nhập</button><button class="secondary" onclick="showEmployeeLogin()">Quay lại</button></div>
   </section>
+function handleAdminLogin() {
+  const userVal = document.getElementById('adminUser').value; // Thay ID tương ứng
+  const passVal = document.getElementById('adminPass').value; // Thay ID tương ứng
+  
+  const loading = document.getElementById('loadingOverlay');
+  const btn = document.getElementById('btnAdminLogin'); // Thay bằng ID nút Đăng nhập Admin của bạn
+
+  // BẬT hiệu ứng chờ và khóa nút bấm
+  loading.style.display = 'block';
+  if(btn) btn.disabled = true;
+
+  fetch('URL_WEB_APP_CỦA_BẠN/exec', {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'adminLogin',
+      username: userVal,
+      password: passVal
+    })
+  })
+  .then(res => {
+    if (!res.ok) throw new Error('Không thể phản hồi kết nối');
+    return res.json();
+  })
+  .then(data => {
+    if (data.ok) {
+      localStorage.setItem('adminToken', data.token);
+      // Logic chuyển hướng vào màn hình Dashboard Admin...
+    } else {
+      alert(data.message || 'Tài khoản hoặc mật khẩu Admin không chính xác.');
+    }
+  })
+  .catch(err => {
+    alert('Lỗi đăng nhập hệ thống: ' + err.message);
+  })
+  .finally(() => {
+    // TẮT hiệu ứng chờ và mở khóa nút bấm
+    loading.style.display = 'none';
+    if(btn) btn.disabled = false;
+  });
+}
 
   <section id="adminCard" class="hidden">
     <div class="card">

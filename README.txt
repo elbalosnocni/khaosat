@@ -82,3 +82,13 @@ Tuy nhien nen sao luu Spreadsheet truoc khi chuyen sang phien ban moi.
 - Chon Khong dong y -> Responses co Status = Tu choi.
 - Dang nhap Admin -> Dashboard co thong ke va danh sach.
 - Doi mat khau Admin.
+
+
+=== V2 - CONG VAN TRUOC KHI DONG Y ===
+- Trang dong y co khung xem cong van/tai lieu ngay truoc cau hoi dong y.
+- Mac dinh: assets/cong-van.pdf.
+- Ho tro PDF va anh JPG/JPEG/PNG/WebP; co nut mo tai lieu trong tab moi.
+- Dat cong van chinh thuc vao assets/cong-van.pdf, hoac sua CONSENT_DOCUMENT_URL trong index.html.
+- Khong kem cong van gia/mau trong goi nay.
+- Dan toc va Ton giao la dropdown, khong bat buoc.
+- Mien/giảm la checkbox dropdown, cho phep chon nhieu; muc 'Khong thuoc...' la lua chon doc lap.

@@ -1,3 +1,13 @@
+
+const MIEN_GIAM_ALLOWED_ = [
+  'Không thuộc trường hợp miễn/giảm','Trẻ em','Người cao tuổi','Người khuyết tật',
+  'Hộ nghèo/cận nghèo','Cư trú tại xã đặc biệt khó khăn',
+  'Đồng bào dân tộc thiểu số ở xã có điều kiện KT-XH đặc biệt khó khăn',
+  'Cư trú tại xã biên giới','Cư trú tại xã an toàn khu',
+  'Học sinh từ đủ 16 tuổi trở lên','Sinh viên','Người có công với cách mạng',
+  'Thân nhân liệt sĩ','Người có công nuôi liệt sĩ','Khác'
+];
+
 /**
  * HE THONG THU THAP DU LIEU LY LICH TU PHAP
  * Google Apps Script Backend
@@ -189,6 +199,18 @@ function saveConsent_(b) {
   return json_({ ok: true, next: 'form' });
 }
 
+
+function normalizeMienGiam_(value) {
+  const raw = clean_(value);
+  if (!raw) return '';
+  const selected = raw.split(';').map(function(s){ return clean_(s); })
+    .filter(function(s){ return MIEN_GIAM_ALLOWED_.indexOf(s) >= 0; });
+  const unique = [];
+  selected.forEach(function(s){ if (unique.indexOf(s) < 0) unique.push(s); });
+  if (unique.indexOf('Không thuộc trường hợp miễn/giảm') >= 0) return 'Không thuộc trường hợp miễn/giảm';
+  return unique.join('; ');
+}
+
 function submitForm_(b) {
   const session = requireEmployeeSession_(b.token);
   if (!session) {
@@ -210,13 +232,13 @@ function submitForm_(b) {
     tonGiao: clean_(b.tonGiao),
     diaChiThuongTru: clean_(b.diaChiThuongTru),
     trinhDoChuyenMon: clean_(b.trinhDoChuyenMon),
-    mienGiam: clean_(b.mienGiam)
+    mienGiam: normalizeMienGiam_(b.mienGiam)
   };
 
-  // Theo yeu cau bieu mau: ngay sinh, ton giao, dia chi thuong tru la bat buoc.
+  // Truong bat buoc: ngay sinh va dia chi thuong tru.
+  // Dan toc va ton giao co the de trong khi chua co du lieu.
   const required = [
     ['ngaySinh', 'Ngay, thang, nam sinh'],
-    ['tonGiao', 'Ton giao'],
     ['diaChiThuongTru', 'Dia chi thuong tru']
   ];
 

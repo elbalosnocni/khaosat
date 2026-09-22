@@ -4,13 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Thu thập dữ liệu lý lịch tư pháp</title>
-<button id="loginBtn" onclick="handleLogin()">Đăng nhập</button>
-
-<!-- Hiệu ứng chờ đợi (Loading Spinner) -->
-<!-- Bọc toàn bộ vùng hiển thị chờ đợi vào một thẻ div có ID riêng và để mặc định ẩn -->
-<div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; color: white; text-align: center; padding-top: 20vh;">
-  <div>Đang xử lý, vui lòng đợi...</div>
-</div>
 
 <style>
 :root{--p:#0b5ed7;--bg:#f4f7fb;--card:#fff;--text:#182230;--muted:#667085;--ok:#087443;--danger:#b42318}
@@ -36,6 +29,11 @@ button{border:0;border-radius:9px;padding:11px 16px;background:var(--p);color:#f
 </style>
 </head>
 <body>
+  <!-- 1. KHỐI LOADING CHỜ ĐỢI (Mặc định ẩn hoàn toàn, khi nào fetch mới bật) -->
+  <div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; color: white; text-align: center; padding-top: 20vh;">
+    <p>Đang xử lý, vui lòng đợi...</p>
+  </div>
+  <!-- 2. GIAO DIỆN CHÍNH CỦA WEB (Bắt đầu bằng tiêu đề lớn) -->
 <div class="container">
   <div class="brand">
     <h1>THU THẬP THÔNG TIN NGƯỜI LAO ĐỘNG</h1>

@@ -251,44 +251,44 @@
       })
       .then(res => res.json())
       .then(data => {
-     if (data.ok) {
-alert('Thay đổi mật khẩu hệ thống Admin thành công!');
-showSection('adminDashboardSection');
-} else {
-alert(data.message || 'Không thể đổi mật khẩu, vui lòng thử lại.');
-}
-})
-.catch(err => alert('Lỗi hệ thống: ' + err.message))
-.finally(() => {
-if(loading) loading.style.display = 'none';
-});
-}
-// Hàm tải dữ liệu lên Dashboard danh sách nhân viên
-function loadAdminDashboard() {
-const token = localStorage.getItem('adminToken');
-const loading = document.getElementById('loadingOverlay');
-if(loading) loading.style.display = 'block';
-fetch(API_URL, {
-method: 'POST',
-body: JSON.stringify({ action: 'adminDashboard', token: token })
-})
-.then(res => res.json())
-.then(data => {
-if (data.ok) {
-console.log('Đã nạp danh sách:', data.rows);
-// Viết thêm logic Render bảng danh sách dữ liệu data.rows của bạn tại đây...
-}
-})
-.catch(err => console.error(err))
-.finally(() => {
-if(loading) loading.style.display = 'none';
-});
-}
-// Đăng xuất Admin
-function handleAdminLogout() {
-const token = localStorage.getItem('adminToken');
-fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'adminLogout', token: token }) });
-localStorage.removeItem('adminToken');
-showSection('employeeLoginSection');
-}
- 
+         if (data.ok) {
+    alert('Thay đổi mật khẩu hệ thống Admin thành công!');
+    showSection('adminDashboardSection');
+    } else {
+    alert(data.message || 'Không thể đổi mật khẩu, vui lòng thử lại.');
+    }
+    })
+    .catch(err => alert('Lỗi hệ thống: ' + err.message))
+    .finally(() => {
+    if(loading) loading.style.display = 'none';
+    });
+    }
+    // Hàm tải dữ liệu lên Dashboard danh sách nhân viên
+    function loadAdminDashboard() {
+    const token = localStorage.getItem('adminToken');
+    const loading = document.getElementById('loadingOverlay');
+    if(loading) loading.style.display = 'block';
+    fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'adminDashboard', token: token })
+    })
+    .then(res => res.json())
+    .then(data => {
+    if (data.ok) {
+    console.log('Đã nạp danh sách:', data.rows);
+    // Viết thêm logic Render bảng danh sách dữ liệu data.rows của bạn tại đây...
+    }
+    })
+    .catch(err => console.error(err))
+    .finally(() => {
+    if(loading) loading.style.display = 'none';
+    });
+    }
+    // Đăng xuất Admin
+    function handleAdminLogout() {
+    const token = localStorage.getItem('adminToken');
+    fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'adminLogout', token: token }) });
+    localStorage.removeItem('adminToken');
+    showSection('employeeLoginSection');
+    }
+     

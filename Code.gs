@@ -1,67 +1,115 @@
 /**
- * Google Apps Script Backend - Tối ưu hóa hiệu năng
+ * HE THONG THU THAP DU LIEU LY LICH TU PHAP
+ * Google Apps Script Backend
+ * Phien ban toi uu: 22/09/2026
+ *
+ * SHEET:
+ *  - DSCNV: MaNV | HoTen | CCCD
+ *  - Responses: Timestamp | SubmissionId | MaNV | HoTen | CCCD | Consent |
+ *    NgaySinh | GioiTinh | DanToc | TonGiao | DiaChiThuongTru |
+ *    TrinhDoChuyenMon | MienGiam | Status | UpdatedAt
+ *  - AdminUsers: Username | PasswordHash | PasswordSalt | Active | CreatedAt | UpdatedAt
+ *
+ * SCRIPT PROPERTIES:
+ *  - SPREADSHEET_ID: ID cua Google Spreadsheet
+ *  - PASSWORD_PEPPER: tu dong tao boi setup() neu chua co
  */
 
-const CONFIG = {
+const CONFIG = Object.freeze({
   EMPLOYEE_SHEET: 'DSCNV',
   RESPONSE_SHEET: 'Responses',
   ADMIN_SHEET: 'AdminUsers',
-  SESSION_SECONDS: 8 * 60 * 60,
+
+  // CacheService cua Apps Script gioi han thoi gian luu cache.
+  SESSION_SECONDS: 6 * 60 * 60,
+
   PEPPER_PROPERTY: 'PASSWORD_PEPPER',
-  SPREADSHEET_PROPERTY: 'SPREADSHEET_ID'
-};
+  SPREADSHEET_PROPERTY: 'SPREADSHEET_ID',
+
+  MAX_TEXT: 2000,
+  MAX_CCCD_LENGTH: 12,
+  EMPLOYEE_CACHE_SECONDS: 300,
+  RESPONSE_CACHE_SECONDS: 60
+});
+
+/* ========================= SETUP ========================= */
 
 function setup() {
   const ss = getSS_();
-  ensureSheet_(ss, CONFIG.EMPLOYEE_SHEET, ['MaNV','HoTen','CCCD']);
+
+  ensureSheet_(ss, CONFIG.EMPLOYEE_SHEET, ['MaNV', 'HoTen', 'CCCD']);
   ensureSheet_(ss, CONFIG.RESPONSE_SHEET, [
-    'Timestamp','SubmissionId','MaNV','HoTen','CCCD','Consent',
-    'NgaySinh','GioiTinh','DanToc','TonGiao','DiaChiThuongTru',
-    'TrinhDoChuyenMon','MienGiam','Status','UpdatedAt'
+    'Timestamp', 'SubmissionId', 'MaNV', 'HoTen', 'CCCD', 'Consent',
+    'NgaySinh', 'GioiTinh', 'DanToc', 'TonGiao', 'DiaChiThuongTru',
+    'TrinhDoChuyenMon', 'MienGiam', 'Status', 'UpdatedAt'
   ]);
   ensureSheet_(ss, CONFIG.ADMIN_SHEET, [
-    'Username','PasswordHash','PasswordSalt','Active','CreatedAt','UpdatedAt'
+    'Username', 'PasswordHash', 'PasswordSalt', 'Active', 'CreatedAt', 'UpdatedAt'
   ]);
 
   const props = PropertiesService.getScriptProperties();
   if (!props.getProperty(CONFIG.PEPPER_PROPERTY)) {
-    props.setProperty(CONFIG.PEPPER_PROPERTY, randomHex_(32));
+    props.setProperty(CONFIG.PEPPER_PROPERTY, randomHex_(64));
   }
 
   const admin = getSheet_(CONFIG.ADMIN_SHEET);
-  const rows = admin.getDataRange().getValues();
-  if (rows.length <= 1) {
-    const salt = randomHex_(16);
+  if (admin.getLastRow() <= 1) {
+    const salt = randomHex_(32);
     const hash = hashPassword_('ChangeMe@123', salt);
     admin.appendRow(['admin', hash, salt, true, new Date(), new Date()]);
-    Logger.log('Created admin user "admin" with temporary password: ChangeMe@123');
+    Logger.log('Tai khoan admin mac dinh: admin / ChangeMe@123. Hay doi mat khau ngay.');
   }
+
+  clearDataCaches_();
   return 'Setup completed.';
 }
 
-function doGet(e) {
-  return json_({ ok: true, service: 'ly-lich-tu-phap-api', version: '1.1' });
+/* ========================= HTTP ========================= */
+
+function doGet() {
+  return json_({
+    ok: true,
+    service: 'ly-lich-tu-phap-api',
+    version: '2.0',
+    time: new Date().toISOString()
+  });
 }
 
 function doPost(e) {
   try {
-    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    const action = String(body.action || '');
+    const body = parseRequest_(e);
+    const action = String(body.action || '').trim();
 
     switch (action) {
       case 'employeeLogin': return employeeLogin_(body);
       case 'saveConsent': return saveConsent_(body);
       case 'submitForm': return submitForm_(body);
       case 'getMySubmission': return getMySubmission_(body);
+
       case 'adminLogin': return adminLogin_(body);
       case 'adminDashboard': return adminDashboard_(body);
       case 'adminChangePassword': return adminChangePassword_(body);
       case 'adminLogout': return adminLogout_(body);
-      default: return json_({ ok:false, error:'INVALID_ACTION' });
+
+      default:
+        return json_({ ok: false, error: 'INVALID_ACTION', message: 'Yeu cau khong hop le.' });
     }
   } catch (err) {
     console.error(err);
-    return json_({ ok:false, error:'SERVER_ERROR', message: safeMessage_(err) });
+    return json_({
+      ok: false,
+      error: 'SERVER_ERROR',
+      message: safeMessage_(err)
+    });
+  }
+}
+
+function parseRequest_(e) {
+  const raw = (e && e.postData && e.postData.contents) || '{}';
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error('Du lieu gui len khong phai JSON hop le.');
   }
 }
 
@@ -69,13 +117,22 @@ function doPost(e) {
 
 function employeeLogin_(b) {
   const cccd = normalizeCCCD_(b.cccd);
+
   if (!/^\d{9,12}$/.test(cccd)) {
-    return json_({ok:false, error:'INVALID_CCCD', message:'Số CCCD không hợp lệ.'});
+    return json_({
+      ok: false,
+      error: 'INVALID_CCCD',
+      message: 'So CCCD phai co 9 den 12 chu so.'
+    });
   }
 
   const emp = findEmployeeByCCCD_(cccd);
   if (!emp) {
-    return json_({ok:false, error:'NOT_FOUND', message:'Không tìm thấy thông tin CCCD trong danh sách nhân viên.'});
+    return json_({
+      ok: false,
+      error: 'NOT_FOUND',
+      message: 'Khong tim thay so CCCD trong danh sach nhan vien.'
+    });
   }
 
   const token = createSession_('employee', {
@@ -85,204 +142,315 @@ function employeeLogin_(b) {
   });
 
   const previous = findLatestResponseByMaNV_(emp.maNV);
+
   return json_({
-    ok:true,
-    token:token,
-    employee:{maNV:emp.maNV, hoTen:emp.hoTen, cccd:cccd},
+    ok: true,
+    token: token,
+    employee: {
+      maNV: emp.maNV,
+      hoTen: emp.hoTen,
+      cccd: cccd
+    },
     previous: previous ? sanitizeResponse_(previous) : null
   });
 }
 
 function saveConsent_(b) {
-  const s = requireEmployeeSession_(b.token);
-  if (!s) return json_({ok:false,error:'UNAUTHORIZED'});
-
-  const consent = b.consent === true;
-  const existing = findLatestResponseByMaNV_(s.maNV);
-
-  if (!consent) {
-    upsertResponse_(s, {
-      Consent:'Không đồng ý',
-      Status:'Từ chối',
-      UpdatedAt:new Date()
-    }, existing);
-    return json_({ok:true, next:'end', message:'Đã ghi nhận lựa chọn của Anh/Chị.'});
+  const session = requireEmployeeSession_(b.token);
+  if (!session) {
+    return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Phien lam viec da het han. Vui long dang nhap lai.' });
   }
 
-  upsertResponse_(s, {
-    Consent:'Đồng ý',
-    Status:'Đang kê khai',
-    UpdatedAt:new Date()
+  const consent = b.consent === true;
+  const existing = findLatestResponseByMaNV_(session.maNV);
+
+  if (!consent) {
+    upsertResponse_(session, {
+      Consent: 'Khong dong y',
+      Status: 'Tu choi',
+      UpdatedAt: new Date()
+    }, existing);
+
+    destroySession_(b.token);
+
+    return json_({
+      ok: true,
+      next: 'end',
+      message: 'Da ghi nhan lua chon khong dong y.'
+    });
+  }
+
+  upsertResponse_(session, {
+    Consent: 'Dong y',
+    Status: 'Dang ke khai',
+    UpdatedAt: new Date()
   }, existing);
 
-  return json_({ok:true, next:'form'});
+  return json_({ ok: true, next: 'form' });
 }
 
 function submitForm_(b) {
-  const s = requireEmployeeSession_(b.token);
-  if (!s) return json_({ok:false,error:'UNAUTHORIZED'});
-
-  if (b.consent !== true) {
-    return json_({ok:false,error:'CONSENT_REQUIRED',message:'Vui lòng xác nhận đồng ý trước khi kê khai.'});
+  const session = requireEmployeeSession_(b.token);
+  if (!session) {
+    return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Phien lam viec da het han. Vui long dang nhap lai.' });
   }
 
-  const required = ['ngaySinh','tonGiao','diaChiThuongTru'];
-  for (const k of required) {
-    if (!String(b[k] || '').trim()) {
-      return json_({ok:false,error:'MISSING_REQUIRED',field:k,message:'Vui lòng điền đầy đủ thông tin bắt buộc.'});
+  if (b.consent !== true) {
+    return json_({
+      ok: false,
+      error: 'CONSENT_REQUIRED',
+      message: 'Vui long xac nhan dong y truoc khi ke khai.'
+    });
+  }
+
+  const fields = {
+    ngaySinh: clean_(b.ngaySinh),
+    gioiTinh: clean_(b.gioiTinh),
+    danToc: clean_(b.danToc),
+    tonGiao: clean_(b.tonGiao),
+    diaChiThuongTru: clean_(b.diaChiThuongTru),
+    trinhDoChuyenMon: clean_(b.trinhDoChuyenMon),
+    mienGiam: clean_(b.mienGiam)
+  };
+
+  // Theo yeu cau bieu mau: ngay sinh, ton giao, dia chi thuong tru la bat buoc.
+  const required = [
+    ['ngaySinh', 'Ngay, thang, nam sinh'],
+    ['tonGiao', 'Ton giao'],
+    ['diaChiThuongTru', 'Dia chi thuong tru']
+  ];
+
+  for (let i = 0; i < required.length; i++) {
+    const key = required[i][0];
+    if (!fields[key]) {
+      return json_({
+        ok: false,
+        error: 'MISSING_REQUIRED',
+        field: key,
+        message: 'Vui long dien day du: ' + required[i][1] + '.'
+      });
     }
   }
 
-  const existing = findLatestResponseByMaNV_(s.maNV);
-  upsertResponse_(s, {
-    Consent:'Đồng ý',
-    NgaySinh:clean_(b.ngaySinh),
-    GioiTinh:clean_(b.gioiTinh),
-    DanToc:clean_(b.danToc),
-    TonGiao:clean_(b.tonGiao),
-    DiaChiThuongTru:clean_(b.diaChiThuongTru),
-    TrinhDoChuyenMon:clean_(b.trinhDoChuyenMon),
-    MienGiam:clean_(b.mienGiam),
-    Status:'Đã hoàn tất',
-    UpdatedAt:new Date()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fields.ngaySinh)) {
+    return json_({
+      ok: false,
+      error: 'INVALID_DATE',
+      field: 'ngaySinh',
+      message: 'Ngay sinh khong dung dinh dang.'
+    });
+  }
+
+  const existing = findLatestResponseByMaNV_(session.maNV);
+
+  upsertResponse_(session, {
+    Consent: 'Dong y',
+    NgaySinh: fields.ngaySinh,
+    GioiTinh: fields.gioiTinh,
+    DanToc: fields.danToc,
+    TonGiao: fields.tonGiao,
+    DiaChiThuongTru: fields.diaChiThuongTru,
+    TrinhDoChuyenMon: fields.trinhDoChuyenMon,
+    MienGiam: fields.mienGiam,
+    Status: 'Da hoan tat',
+    UpdatedAt: new Date()
   }, existing);
 
-  return json_({ok:true,message:'Đã lưu thông tin thành công.'});
+  destroySession_(b.token);
+
+  return json_({
+    ok: true,
+    message: 'Da luu thong tin ke khai thanh cong.'
+  });
 }
 
 function getMySubmission_(b) {
-  const s = requireEmployeeSession_(b.token);
-  if (!s) return json_({ok:false,error:'UNAUTHORIZED'});
-  const r = findLatestResponseByMaNV_(s.maNV);
-  return json_({ok:true,submission:r ? sanitizeResponse_(r) : null});
+  const session = requireEmployeeSession_(b.token);
+  if (!session) {
+    return json_({ ok: false, error: 'UNAUTHORIZED' });
+  }
+
+  const r = findLatestResponseByMaNV_(session.maNV);
+  return json_({
+    ok: true,
+    submission: r ? sanitizeResponse_(r) : null
+  });
 }
 
 /* ========================= ADMIN ========================= */
 
 function adminLogin_(b) {
-  const username = clean_(b.username);
+  const username = clean_(b.username, 100);
   const password = String(b.password || '');
-  if (!username || !password) return json_({ok:false,error:'INVALID_LOGIN'});
+
+  if (!username || !password) {
+    return json_({
+      ok: false,
+      error: 'INVALID_LOGIN',
+      message: 'Vui long nhap day du tai khoan va mat khau.'
+    });
+  }
 
   const admin = findAdmin_(username);
-  if (!admin || String(admin.active).toLowerCase() === 'false') {
-    return json_({ok:false,error:'INVALID_LOGIN',message:'Tài khoản hoặc mật khẩu không đúng.'});
+  if (!admin || !isActive_(admin.active)) {
+    return json_({
+      ok: false,
+      error: 'INVALID_LOGIN',
+      message: 'Tai khoan hoac mat khau khong dung.'
+    });
   }
 
   const hash = hashPassword_(password, admin.salt);
   if (!secureEqual_(hash, admin.hash)) {
-    return json_({ok:false,error:'INVALID_LOGIN',message:'Tài khoản hoặc mật khẩu không đúng.'});
+    return json_({
+      ok: false,
+      error: 'INVALID_LOGIN',
+      message: 'Tai khoan hoac mat khau khong dung.'
+    });
   }
 
-  const token = createSession_('admin', {username});
-  return json_({ok:true,token});
+  const token = createSession_('admin', { username: username });
+
+  return json_({ ok: true, token: token });
 }
 
-// TỐI ƯU HÓA: Đọc chung 1 mở file Spreadsheet để tránh bị nghẽn I/O
 function adminDashboard_(b) {
-  const s = requireAdminSession_(b.token);
-  if (!s) return json_({ok:false,error:'UNAUTHORIZED'});
+  const session = requireAdminSession_(b.token);
+  if (!session) {
+    return json_({
+      ok: false,
+      error: 'UNAUTHORIZED',
+      message: 'Phien admin da het han. Vui long dang nhap lai.'
+    });
+  }
 
   const ss = getSS_();
-  const responses = getResponseObjects_(ss);
-  const employees = getEmployeeObjects_(ss);
 
-  const byStatus = { 'Chưa điền':0, 'Đang kê khai':0, 'Đã hoàn tất':0, 'Từ chối':0 };
-  const latest = {};
+  // Doc moi sheet mot lan.
+  const employees = getEmployeeObjects_(ss);
+  const responses = getResponseObjects_(ss);
+
+  const latest = Object.create(null);
 
   for (let i = 0; i < responses.length; i++) {
     const r = responses[i];
-    if (!r.MaNV) continue;
-    if (!latest[r.MaNV] || new Date(r.UpdatedAt || r.Timestamp) > new Date(latest[r.MaNV].UpdatedAt || latest[r.MaNV].Timestamp)) {
-      latest[r.MaNV] = r;
+    const key = String(r.MaNV || '').trim();
+    if (!key) continue;
+
+    const currTime = dateMs_(r.UpdatedAt || r.Timestamp);
+    const oldTime = latest[key] ? dateMs_(latest[key].UpdatedAt || latest[key].Timestamp) : -1;
+
+    if (!latest[key] || currTime >= oldTime) {
+      latest[key] = r;
     }
   }
 
+  const summary = {
+    totalEmployees: employees.length,
+    completed: 0,
+    inProgress: 0,
+    refused: 0,
+    notStarted: 0
+  };
+
   const list = new Array(employees.length);
+
   for (let i = 0; i < employees.length; i++) {
     const e = employees[i];
     const r = latest[e.MaNV];
-    const st = r ? (r.Status || 'Đang kê khai') : 'Chưa điền';
-    
-    if (byStatus[st] !== undefined) {
-      byStatus[st]++;
-    } else {
-      byStatus[st] = 1;
-    }
+    const status = r ? String(r.Status || 'Dang ke khai') : 'Chua dien';
+
+    if (status === 'Da hoan tat') summary.completed++;
+    else if (status === 'Dang ke khai') summary.inProgress++;
+    else if (status === 'Tu choi') summary.refused++;
+    else summary.notStarted++;
 
     list[i] = {
       maNV: e.MaNV,
       hoTen: e.HoTen,
       cccd: maskCCCD_(e.CCCD),
-      status: st,
-      consent: r ? r.Consent : '',
+      status: status,
+      consent: r ? String(r.Consent || '') : '',
       updatedAt: r ? formatDate_(r.UpdatedAt || r.Timestamp) : ''
     };
   }
 
   return json_({
     ok: true,
-    summary: {
-      totalEmployees: employees.length,
-      completed: byStatus['Đã hoàn tất'] || 0,
-      inProgress: byStatus['Đang kê khai'] || 0,
-      refused: byStatus['Từ chối'] || 0,
-      notStarted: byStatus['Chưa điền'] || 0
-    },
+    summary: summary,
     rows: list
   });
 }
 
 function adminChangePassword_(b) {
-  const s = requireAdminSession_(b.token);
-  if (!s) return json_({ok:false,error:'UNAUTHORIZED'});
+  const session = requireAdminSession_(b.token);
+  if (!session) {
+    return json_({ ok: false, error: 'UNAUTHORIZED' });
+  }
 
   const oldPassword = String(b.oldPassword || '');
   const newPassword = String(b.newPassword || '');
   const confirm = String(b.confirmPassword || '');
 
   if (newPassword.length < 10) {
-    return json_({ok:false,error:'WEAK_PASSWORD',message:'Mật khẩu mới phải có ít nhất 10 ký tự.'});
+    return json_({
+      ok: false,
+      error: 'WEAK_PASSWORD',
+      message: 'Mat khau moi phai co it nhat 10 ky tu.'
+    });
   }
+
   if (newPassword !== confirm) {
-    return json_({ok:false,error:'PASSWORD_MISMATCH',message:'Xác nhận mật khẩu không khớp.'});
+    return json_({
+      ok: false,
+      error: 'PASSWORD_MISMATCH',
+      message: 'Xac nhan mat khau khong khop.'
+    });
   }
 
-  const admin = findAdmin_(s.username);
+  if (oldPassword === newPassword) {
+    return json_({
+      ok: false,
+      error: 'SAME_PASSWORD',
+      message: 'Mat khau moi phai khac mat khau hien tai.'
+    });
+  }
+
+  const admin = findAdmin_(session.username);
   if (!admin || !secureEqual_(hashPassword_(oldPassword, admin.salt), admin.hash)) {
-    return json_({ok:false,error:'INVALID_PASSWORD',message:'Mật khẩu hiện tại không đúng.'});
+    return json_({
+      ok: false,
+      error: 'INVALID_PASSWORD',
+      message: 'Mat khau hien tai khong dung.'
+    });
   }
 
-  const newSalt = randomHex_(16);
+  const newSalt = randomHex_(32);
   const newHash = hashPassword_(newPassword, newSalt);
   const sh = getSheet_(CONFIG.ADMIN_SHEET);
-  
-  sh.getRange(admin.row, 2).setValue(newHash);
-  sh.getRange(admin.row, 3).setValue(newSalt);
+
+  sh.getRange(admin.row, 2, 1, 2).setValues([[newHash, newSalt]]);
   sh.getRange(admin.row, 6).setValue(new Date());
-  
-  return json_({ok:true,message:'Đã đổi mật khẩu admin.'});
+
+  return json_({ ok: true, message: 'Da doi mat khau admin.' });
 }
 
 function adminLogout_(b) {
-  if (b.token) CacheService.getScriptCache().remove('sess:' + b.token);
-  return json_({ok:true});
+  destroySession_(b.token);
+  return json_({ ok: true });
 }
 
-/* ========================= DATA HELPER OPTIMIZED ========================= */
+/* ========================= SHEET DATA ========================= */
 
 function findEmployeeByCCCD_(cccd) {
-  const rows = getSheet_(CONFIG.EMPLOYEE_SHEET).getDataRange().getDisplayValues();
-  if (rows.length < 2) return null;
-  const h = headerMap_(rows[0]);
-  for (let i = 1; i < rows.length; i++) {
-    const c = normalizeCCCD_(rows[i][h.CCCD]);
-    if (c === cccd) {
+  const employees = getEmployeeObjects_();
+  for (let i = 0; i < employees.length; i++) {
+    if (normalizeCCCD_(employees[i].CCCD) === cccd) {
       return {
-        row: i + 1,
-        maNV: String(rows[i][h.MaNV] || '').trim(),
-        hoTen: String(rows[i][h.HoTen] || '').trim(),
-        cccd: c
+        row: employees[i]._row,
+        maNV: employees[i].MaNV,
+        hoTen: employees[i].HoTen,
+        cccd: cccd
       };
     }
   }
@@ -290,17 +458,21 @@ function findEmployeeByCCCD_(cccd) {
 }
 
 function findAdmin_(username) {
-  const rows = getSheet_(CONFIG.ADMIN_SHEET).getDataRange().getValues();
-  if (rows.length < 2) return null;
-  for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() === username) {
+  const sh = getSheet_(CONFIG.ADMIN_SHEET);
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return null;
+
+  const rows = sh.getRange(2, 1, lastRow - 1, 6).getValues();
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0] || '').trim() === username) {
       return {
-        row: i + 1, 
-        username: username, 
-        hash: String(rows[i][1]), 
-        salt: String(rows[i][2]), 
-        active: rows[i][3], 
-        createdAt: rows[i][4]
+        row: i + 2,
+        username: username,
+        hash: String(rows[i][1] || ''),
+        salt: String(rows[i][2] || ''),
+        active: rows[i][3],
+        createdAt: rows[i][4],
+        updatedAt: rows[i][5]
       };
     }
   }
@@ -308,117 +480,201 @@ function findAdmin_(username) {
 }
 
 function getEmployeeObjects_(ss) {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('employees:v2');
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (err) {
+      // Cache loi thi doc lai sheet.
+    }
+  }
+
   const sheet = ss ? ss.getSheetByName(CONFIG.EMPLOYEE_SHEET) : getSheet_(CONFIG.EMPLOYEE_SHEET);
+  if (!sheet) throw new Error('Khong tim thay sheet ' + CONFIG.EMPLOYEE_SHEET);
+
   const rows = sheet.getDataRange().getDisplayValues();
   if (rows.length < 2) return [];
-  const h = headerMap_(rows[0]);
+
+  const h = employeeHeaderMap_(rows[0]);
   const list = [];
+
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     const maNV = String(r[h.MaNV] || '').trim();
     const hoTen = String(r[h.HoTen] || '').trim();
     const cccd = normalizeCCCD_(r[h.CCCD]);
+
     if (maNV || hoTen || cccd) {
-      list.push({ MaNV: maNV, HoTen: hoTen, CCCD: cccd });
+      list.push({
+        _row: i + 1,
+        MaNV: maNV,
+        HoTen: hoTen,
+        CCCD: cccd
+      });
     }
   }
+
+  cachePutJson_('employees:v2', list, CONFIG.EMPLOYEE_CACHE_SECONDS);
   return list;
 }
 
 function getResponseObjects_(ss) {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('responses:v2');
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (err) {
+      // Cache loi thi doc lai sheet.
+    }
+  }
+
   const sheet = ss ? ss.getSheetByName(CONFIG.RESPONSE_SHEET) : getSheet_(CONFIG.RESPONSE_SHEET);
+  if (!sheet) throw new Error('Khong tim thay sheet ' + CONFIG.RESPONSE_SHEET);
+
   const rows = sheet.getDataRange().getValues();
   if (rows.length < 2) return [];
-  const h = headerMap_(rows[0]);
-  const keys = Object.keys(h);
-  const list = [];
-  
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    const maNV = r[h.MaNV];
-    if (!maNV) continue;
-    
-    const o = { _row: i + 2 };
-    for (let k = 0; k < keys.length; k++) {
-      const key = keys[k];
-      o[key] = r[h[key]];
+
+  const headers = rows[0].map(function(v) { return String(v || '').trim(); });
+  const required = ['MaNV', 'HoTen', 'CCCD'];
+  for (let i = 0; i < required.length; i++) {
+    if (headers.indexOf(required[i]) < 0) {
+      throw new Error('Sheet Responses thieu cot ' + required[i]);
     }
-    list.push(o);
   }
-  return list;
+
+  const list = new Array(rows.length - 1);
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const o = { _row: i + 1 };
+
+    for (let j = 0; j < headers.length; j++) {
+      if (headers[j]) o[headers[j]] = row[j];
+    }
+
+    list[i - 1] = o;
+  }
+
+  const filtered = list.filter(function(o) {
+    return String(o.MaNV || '').trim() !== '';
+  });
+
+  cachePutJson_('responses:v2', filtered, CONFIG.RESPONSE_CACHE_SECONDS);
+  return filtered;
 }
 
 function findLatestResponseByMaNV_(maNV) {
+  const target = String(maNV || '').trim();
   const responses = getResponseObjects_();
   let latest = null;
-  const targetMaNV = String(maNV).trim();
+  let latestTime = -1;
 
   for (let i = 0; i < responses.length; i++) {
     const r = responses[i];
-    if (String(r.MaNV).trim() === targetMaNV) {
-      if (!latest) {
-        latest = r;
-      } else {
-        const tCurr = new Date(r.UpdatedAt || r.Timestamp).getTime();
-        const tLatest = new Date(latest.UpdatedAt || latest.Timestamp).getTime();
-        if (tCurr > tLatest) {
-          latest = r;
-        }
-      }
+    if (String(r.MaNV || '').trim() !== target) continue;
+
+    const t = dateMs_(r.UpdatedAt || r.Timestamp);
+    if (t >= latestTime) {
+      latest = r;
+      latestTime = t;
     }
   }
+
   return latest;
 }
 
+/**
+ * Ghi cap nhat vao dong hien tai neu da co SubmissionId/nhan vien.
+ * Dung LockService de tranh 2 request dong thoi ghi cung mot nhan vien.
+ */
 function upsertResponse_(session, patch, existing) {
-  const sh = getSheet_(CONFIG.RESPONSE_SHEET);
-  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
-  const base = {};
-  for (let i = 0; i < headers.length; i++) base[headers[i]] = '';
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
 
-  base.Timestamp = existing && existing.Timestamp ? existing.Timestamp : new Date();
-  base.SubmissionId = existing && existing.SubmissionId ? existing.SubmissionId : Utilities.getUuid();
-  base.MaNV = session.maNV;
-  base.HoTen = session.hoTen;
-  base.CCCD = session.cccd;
-  
-  const patchKeys = Object.keys(patch);
-  for (let i = 0; i < patchKeys.length; i++) {
-    const k = patchKeys[i];
-    base[k] = patch[k];
-  }
+  try {
+    const sh = getSheet_(CONFIG.RESPONSE_SHEET);
+    const lastCol = sh.getLastColumn();
 
-  const row = new Array(headers.length);
-  for (let i = 0; i < headers.length; i++) {
-    row[i] = base[headers[i]] === undefined ? '' : base[headers[i]];
-  }
+    if (lastCol < 1) throw new Error('Sheet Responses chua co cot.');
 
-  if (existing && existing._row) {
-    sh.getRange(existing._row, 1, 1, headers.length).setValues([row]);
-  } else {
-    sh.appendRow(row);
+    const headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
+    const base = Object.create(null);
+
+    for (let i = 0; i < headers.length; i++) {
+      base[headers[i]] = '';
+    }
+
+    base.Timestamp = existing && existing.Timestamp ? existing.Timestamp : new Date();
+    base.SubmissionId = existing && existing.SubmissionId
+      ? existing.SubmissionId
+      : Utilities.getUuid();
+
+    base.MaNV = session.maNV;
+    base.HoTen = session.hoTen;
+    base.CCCD = session.cccd;
+
+    const patchKeys = Object.keys(patch);
+    for (let i = 0; i < patchKeys.length; i++) {
+      base[patchKeys[i]] = patch[patchKeys[i]];
+    }
+
+    const row = headers.map(function(h) {
+      return base[h] === undefined ? '' : base[h];
+    });
+
+    if (existing && existing._row) {
+      sh.getRange(existing._row, 1, 1, headers.length).setValues([row]);
+    } else {
+      sh.getRange(sh.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
+    }
+
+    clearDataCaches_();
+  } finally {
+    lock.releaseLock();
   }
 }
 
-/* ========================= SESSION / SECURITY ========================= */
+/* ========================= SESSION ========================= */
 
 function createSession_(type, payload) {
   const token = Utilities.getUuid() + '-' + Utilities.getUuid();
-  const obj = { type, payload, expiresAt: Date.now() + CONFIG.SESSION_SECONDS * 1000 };
-  CacheService.getScriptCache().put('sess:' + token, JSON.stringify(obj), CONFIG.SESSION_SECONDS);
+  const obj = {
+    type: type,
+    payload: payload,
+    expiresAt: Date.now() + CONFIG.SESSION_SECONDS * 1000
+  };
+
+  CacheService.getScriptCache().put(
+    'sess:' + token,
+    JSON.stringify(obj),
+    CONFIG.SESSION_SECONDS
+  );
+
   return token;
 }
 
 function getSession_(token) {
-  if (!token) return null;
-  const raw = CacheService.getScriptCache().get('sess:' + token);
+  const t = String(token || '').trim();
+  if (!t) return null;
+
+  const raw = CacheService.getScriptCache().get('sess:' + t);
   if (!raw) return null;
-  const s = JSON.parse(raw);
-  if (s.expiresAt < Date.now()) {
-    CacheService.getScriptCache().remove('sess:' + token);
+
+  try {
+    const s = JSON.parse(raw);
+
+    if (!s.expiresAt || s.expiresAt < Date.now()) {
+      destroySession_(t);
+      return null;
+    }
+
+    return s;
+  } catch (err) {
+    destroySession_(t);
     return null;
   }
-  return s;
 }
 
 function requireEmployeeSession_(token) {
@@ -431,8 +687,16 @@ function requireAdminSession_(token) {
   return s && s.type === 'admin' ? s.payload : null;
 }
 
+function destroySession_(token) {
+  const t = String(token || '').trim();
+  if (t) CacheService.getScriptCache().remove('sess:' + t);
+}
+
+/* ========================= SECURITY ========================= */
+
 function hashPassword_(password, salt) {
   const pepper = PropertiesService.getScriptProperties().getProperty(CONFIG.PEPPER_PROPERTY) || '';
+
   return bytesToHex_(Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
     String(password) + ':' + String(salt) + ':' + pepper,
@@ -441,92 +705,145 @@ function hashPassword_(password, salt) {
 }
 
 function secureEqual_(a, b) {
-  a = String(a); b = String(b);
+  a = String(a);
+  b = String(b);
+
   if (a.length !== b.length) return false;
+
   let x = 0;
-  for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < a.length; i++) {
+    x |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
   return x === 0;
 }
 
 function randomHex_(n) {
-  const rawString = Utilities.getUuid() + '-' + Math.random() + '-' + Date.now();
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawString, Utilities.Charset.UTF_8);
+  const raw = Utilities.getUuid() + ':' + Utilities.getUuid() + ':' + Date.now() + ':' + Math.random();
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    raw,
+    Utilities.Charset.UTF_8
+  );
   return bytesToHex_(digest).slice(0, n);
+}
+
+function isActive_(v) {
+  return v === true || String(v).toLowerCase() === 'true' || String(v).toLowerCase() === 'yes';
 }
 
 /* ========================= HELPERS ========================= */
 
 function getSS_() {
   const id = PropertiesService.getScriptProperties().getProperty(CONFIG.SPREADSHEET_PROPERTY);
-  if (!id) throw new Error('Chưa cấu hình SPREADSHEET_ID trong Script Properties.');
+  if (!id) throw new Error('Chua cau hinh SPREADSHEET_ID trong Script Properties.');
   return SpreadsheetApp.openById(id);
 }
 
 function getSheet_(name) {
   const sh = getSS_().getSheetByName(name);
-  if (!sh) throw new Error('Không tìm thấy sheet: ' + name);
+  if (!sh) throw new Error('Khong tim thay sheet: ' + name);
   return sh;
 }
 
 function ensureSheet_(ss, name, headers) {
   let sh = ss.getSheetByName(name);
-  if (!sh) sh = ss.insertSheet(name);
-  if (sh.getLastRow() === 0) sh.appendRow(headers);
+
+  if (!sh) {
+    sh = ss.insertSheet(name);
+  }
+
+  if (sh.getLastRow() === 0) {
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sh.setFrozenRows(1);
+  }
 }
 
-function headerMap_(headers) {
+function employeeHeaderMap_(headers) {
   const h = {};
   for (let i = 0; i < headers.length; i++) {
     h[String(headers[i]).trim()] = i;
   }
+
   if (h['Mã NV'] !== undefined && h.MaNV === undefined) h.MaNV = h['Mã NV'];
   if (h['Họ tên'] !== undefined && h.HoTen === undefined) h.HoTen = h['Họ tên'];
   if (h['Họ và tên'] !== undefined && h.HoTen === undefined) h.HoTen = h['Họ và tên'];
   if (h['Số CCCD'] !== undefined && h.CCCD === undefined) h.CCCD = h['Số CCCD'];
   if (h['CCCD'] !== undefined && h.CCCD === undefined) h.CCCD = h['CCCD'];
-  
-  ['MaNV','HoTen','CCCD'].forEach(k => {
-    if (h[k] === undefined) throw new Error('Thiếu cột bắt buộc trong sheet: ' + k);
+
+  ['MaNV', 'HoTen', 'CCCD'].forEach(function(k) {
+    if (h[k] === undefined) {
+      throw new Error('Sheet DSCNV thieu cot bat buoc: ' + k);
+    }
   });
+
   return h;
 }
 
 function normalizeCCCD_(v) {
-  return String(v == null ? '' : v).trim().replace(/[^\d]/g, '');
+  return String(v == null ? '' : v)
+    .trim()
+    .replace(/[^\d]/g, '')
+    .slice(0, CONFIG.MAX_CCCD_LENGTH);
 }
 
 function maskCCCD_(v) {
   const s = normalizeCCCD_(v);
   if (s.length <= 4) return '***';
-  return '*'.repeat(Math.max(0, s.length - 4)) + s.slice(-4);
+  return '*'.repeat(s.length - 4) + s.slice(-4);
 }
 
-function clean_(v) {
-  return String(v == null ? '' : v).trim().slice(0, 2000);
+function clean_(v, maxLen) {
+  const n = maxLen || CONFIG.MAX_TEXT;
+  return String(v == null ? '' : v).trim().slice(0, n);
 }
 
 function sanitizeResponse_(r) {
   if (!r) return null;
+
   return {
-    MaNV: r.MaNV, HoTen: r.HoTen, Consent: r.Consent, NgaySinh: r.NgaySinh,
-    GioiTinh: r.GioiTinh, DanToc: r.DanToc, TonGiao: r.TonGiao,
-    DiaChiThuongTru: r.DiaChiThuongTru, TrinhDoChuyenMon: r.TrinhDoChuyenMon,
-    MienGiam: r.MienGiam, Status: r.Status, UpdatedAt: formatDate_(r.UpdatedAt || r.Timestamp)
+    MaNV: String(r.MaNV || ''),
+    HoTen: String(r.HoTen || ''),
+    Consent: String(r.Consent || ''),
+    NgaySinh: String(r.NgaySinh || ''),
+    GioiTinh: String(r.GioiTinh || ''),
+    DanToc: String(r.DanToc || ''),
+    TonGiao: String(r.TonGiao || ''),
+    DiaChiThuongTru: String(r.DiaChiThuongTru || ''),
+    TrinhDoChuyenMon: String(r.TrinhDoChuyenMon || ''),
+    MienGiam: String(r.MienGiam || ''),
+    Status: String(r.Status || ''),
+    UpdatedAt: formatDate_(r.UpdatedAt || r.Timestamp)
   };
 }
 
 function formatDate_(v) {
   if (!v) return '';
+
   const d = v instanceof Date ? v : new Date(v);
-  return isNaN(d) ? String(v) : Utilities.formatDate(d, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm:ss');
+  if (isNaN(d.getTime())) return String(v);
+
+  return Utilities.formatDate(
+    d,
+    Session.getScriptTimeZone(),
+    'dd/MM/yyyy HH:mm:ss'
+  );
+}
+
+function dateMs_(v) {
+  if (!v) return 0;
+  const d = v instanceof Date ? v : new Date(v);
+  const t = d.getTime();
+  return isNaN(t) ? 0 : t;
 }
 
 function bytesToHex_(bytes) {
   const hex = [];
+
   for (let i = 0; i < bytes.length; i++) {
     const b = bytes[i];
-    hex.push(('0' + ((b < 0 ? b + 256 : b).toString(16))).slice(-2));
+    hex.push(('0' + (b < 0 ? b + 256 : b).toString(16)).slice(-2));
   }
+
   return hex.join('');
 }
 
@@ -534,7 +851,22 @@ function safeMessage_(e) {
   return String(e && e.message ? e.message : e).slice(0, 500);
 }
 
+function cachePutJson_(key, value, seconds) {
+  try {
+    CacheService.getScriptCache().put(key, JSON.stringify(value), seconds);
+  } catch (err) {
+    // Cache day thi khong duoc lam hong request.
+  }
+}
+
+function clearDataCaches_() {
+  const cache = CacheService.getScriptCache();
+  cache.remove('employees:v2');
+  cache.remove('responses:v2');
+}
+
 function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }

@@ -1,378 +1,857 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8">
-  <title>Thu thập dữ liệu lý lịch tư pháp</title>
-  <style>
-    /* CSS Định vị Overlay Chờ Đợi (Loading) bao phủ toàn màn hình */
-    #loadingOverlay {
-      display: none; /* Mặc định ẩn hoàn toàn */
-      position: fixed;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
-      background: rgba(0, 0, 0, 0.5); /* Nền tối mờ nhẹ */
-      z-index: 9999; /* Luôn nổi lên trên cùng */
-      color: white;
-      text-align: center;
-      padding-top: 35vh;
-      font-family: Arial, sans-serif;
-    }
-    .spinner {
-      margin: 0 auto 15px auto;
-      width: 50px; height: 50px;
-      border: 5px solid #f3f3f3;
-      border-top: 5px solid #3498db;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    /* Bạn có thể giữ nguyên phần CSS giao diện hiện tại của bạn ở đây */
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thu thập dữ liệu lý lịch tư pháp</title>
+<style>
+:root{
+  --primary:#1769aa;
+  --primary-dark:#0d4f82;
+  --bg:#f4f7fb;
+  --card:#fff;
+  --text:#1f2937;
+  --muted:#667085;
+  --border:#dbe2ea;
+  --success:#198754;
+  --warning:#b7791f;
+  --danger:#c0392b;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:Arial,Helvetica,sans-serif;
+  color:var(--text);
+  background:var(--bg);
+}
+.container{
+  width:min(100% - 28px,1000px);
+  margin:28px auto;
+}
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:24px;
+  box-shadow:0 6px 24px rgba(16,24,40,.07);
+}
+h1{font-size:27px;margin:0 0 8px;text-align:center}
+h2{margin-top:0}
+h3{margin-bottom:10px}
+.subtitle{text-align:center;color:var(--muted);margin:0 0 24px}
+.notice{
+  background:#f8fbff;
+  border-left:4px solid var(--primary);
+  padding:16px;
+  line-height:1.65;
+  border-radius:8px;
+}
+label{display:block;font-weight:600;margin:14px 0 7px}
+input,select,textarea{
+  width:100%;
+  border:1px solid #cbd5e1;
+  border-radius:9px;
+  padding:11px 12px;
+  font-size:15px;
+  background:#fff;
+}
+textarea{min-height:100px;resize:vertical}
+input:focus,select:focus,textarea:focus{
+  outline:2px solid rgba(23,105,170,.18);
+  border-color:var(--primary);
+}
+.radio{
+  display:flex;
+  align-items:flex-start;
+  gap:9px;
+  font-weight:400;
+  margin:12px 0;
+}
+.radio input{width:auto;margin-top:3px}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+}
+.actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:20px;
+}
+button{
+  border:0;
+  border-radius:9px;
+  padding:11px 17px;
+  font-size:15px;
+  font-weight:700;
+  cursor:pointer;
+  background:var(--primary);
+  color:#fff;
+}
+button:hover{background:var(--primary-dark)}
+button.secondary{background:#667085}
+button.danger{background:var(--danger)}
+button:disabled{opacity:.55;cursor:not-allowed}
+.required{color:var(--danger)}
+.small{font-size:13px;color:var(--muted)}
+.status{
+  display:inline-block;
+  padding:5px 9px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:700;
+}
+.status.done{background:#dcfce7;color:#166534}
+.status.progress{background:#fef3c7;color:#92400e}
+.status.refused{background:#fee2e2;color:#991b1b}
+.status.new{background:#e5e7eb;color:#374151}
+.summary{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin:18px 0;
+}
+.summary .box{
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:13px;
+  text-align:center;
+  background:#fff;
+}
+.summary b{display:block;font-size:22px;margin-top:4px}
+.table-wrap{overflow:auto;border:1px solid var(--border);border-radius:10px}
+table{width:100%;border-collapse:collapse;min-width:760px}
+th,td{padding:10px;border-bottom:1px solid #edf0f3;text-align:left;font-size:14px}
+th{background:#f8fafc;position:sticky;top:0}
+#loadingOverlay{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.58);
+  z-index:9999;
+  align-items:center;
+  justify-content:center;
+}
+.loading-box{
+  width:min(90%,340px);
+  background:#fff;
+  color:#1f2937;
+  border-radius:14px;
+  padding:25px;
+  text-align:center;
+  box-shadow:0 12px 40px rgba(0,0,0,.22);
+}
+.spinner{
+  width:48px;height:48px;margin:0 auto 14px;
+  border:5px solid #e5e7eb;
+  border-top-color:var(--primary);
+  border-radius:50%;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none!important}
+.employee-badge{
+  background:#eef6ff;
+  border:1px solid #cfe5ff;
+  padding:12px 14px;
+  border-radius:10px;
+  margin-bottom:16px;
+}
+.error{color:var(--danger);font-size:14px;margin-top:8px}
+.success{color:var(--success);font-size:14px;margin-top:8px}
+@media(max-width:720px){
+  .container{width:min(100% - 18px,1000px);margin:10px auto}
+  .card{padding:17px}
+  h1{font-size:22px}
+  .grid,.summary{grid-template-columns:1fr}
+  button{width:100%}
+  .actions{display:grid}
+}
+</style>
 </head>
+
 <body>
-
-  <!-- Khối Loading Chờ Đợi (Đã được sửa lỗi cấu trúc để ẩn/hiện chuẩn xác) -->
-  <div id="loadingOverlay">
+<div id="loadingOverlay" aria-hidden="true">
+  <div class="loading-box">
     <div class="spinner"></div>
-    <div style="font-size: 18px; font-weight: bold;">Đang xử lý, vui lòng đợi...</div>
+    <div id="loadingText"><strong>Đang xử lý...</strong></div>
+    <div class="small" style="margin-top:7px">Vui lòng không đóng trang hoặc bấm lại.</div>
   </div>
+</div>
 
-  <!-- CONTAINER CHÍNH CỦA TRANG WEB -->
-  <div class="container">
+<div class="container">
+  <div class="card">
     <h1>THU THẬP THÔNG TIN NGƯỜI LAO ĐỘNG</h1>
-    <p>Phục vụ công tác làm sạch, cập nhật dữ liệu lý lịch tư pháp</p>
+    <p class="subtitle">Phục vụ công tác làm sạch, cập nhật dữ liệu lý lịch tư pháp</p>
 
-    <!-- SECTION 1: ĐĂNG NHẬP NHÂN VIÊN -->
-    <div id="employeeLoginSection">
+    <!-- NHAN VIEN -->
+    <section id="employeeLoginSection">
       <h2>Đăng nhập người lao động</h2>
-      <p>Vui lòng nhập số CCCD đã được đăng ký trong danh sách nhân viên của Công ty.</p>
-      <label>Số CCCD</label>
-      <input type="text" id="inputCCCD" placeholder="Nhập số CCCD">
-      <br><br>
-      <!-- FIX: Gắn ID và sự kiện onclick kích hoạt hiệu ứng chờ -->
-      <button id="btnTiepTuc" onclick="handleEmployeeLogin()">Tiếp tục</button>
-      <button onclick="showSection('adminLoginSection')">Đăng nhập Admin</button>
-    </div>
+      <div class="notice">
+        Vui lòng nhập <strong>số CCCD</strong> đã được đăng ký trong danh sách nhân viên của Công ty.
+      </div>
 
-    <!-- SECTION 2: THÔNG BÁO VÀ XÁC NHẬN SỰ ĐỒNG Ý -->
-    <div id="consentSection" style="display:none;">
+      <label for="inputCCCD">Số CCCD <span class="required">*</span></label>
+      <input id="inputCCCD" type="text" inputmode="numeric" maxlength="12"
+             autocomplete="off" placeholder="Nhập số CCCD">
+      <div id="employeeLoginError" class="error"></div>
+
+      <div class="actions">
+        <button id="btnTiepTuc" type="button" onclick="handleEmployeeLogin()">Tiếp tục</button>
+        <button type="button" class="secondary" onclick="showSection('adminLoginSection')">Đăng nhập Admin</button>
+      </div>
+    </section>
+
+    <!-- DONG Y -->
+    <section id="consentSection" class="hidden">
       <h2>THÔNG BÁO VÀ XÁC NHẬN SỰ ĐỒNG Ý</h2>
-      <p>Kính gửi Toàn thể Người lao động,...</p>
-      <p><strong>Mục đích xử lý:</strong> Cung cấp thông tin cho cơ quan Công an...</p>
-      <p><strong>Loại dữ liệu:</strong> Họ tên, ngày sinh, giới tính, CCCD...</p>
-      <p><strong>Tổ chức tiếp nhận:</strong> Công ty thu thập, tổng hợp và chuyển giao...</p>
-      <p><strong>Quyền của chủ thể dữ liệu:</strong> Anh/Chị có quyền yêu cầu truy cập...</p>
-      
-      <label><input type="radio" name="consent" id="consentYes" value="yes"> Tôi đồng ý</label><br>
-      <label><input type="radio" name="consent" id="consentNo" value="no"> Tôi không đồng ý</label><br><br>
-      <button onclick="submitConsent()">Tiếp tục</button>
-      <button onclick="showSection('employeeLoginSection')">Thoát</button>
-    </div>
 
-    <!-- SECTION 3: BIỂU MẪU KÊ KHAI THÔNG TIN -->
-    <div id="formSection" style="display:none;">
+      <div class="notice">
+        <p><strong>THÔNG BÁO VỀ VIỆC XỬ LÝ DỮ LIỆU CÁ NHÂN PHỤC VỤ CÔNG TÁC LÀM SẠCH DỮ LIỆU</strong></p>
+        <p>Kính gửi Toàn thể Người lao động,</p>
+        <p>Thực hiện Công văn số 16043/BQL-LĐ ngày 18/09/2026 của Ban Quản lý các Khu chế xuất và công nghiệp TP.HCM và Công văn số 8124/CATP-ANKT của Công an TP.HCM về việc thu thập dữ liệu người lao động phục vụ công tác làm sạch, cập nhật dữ liệu lý lịch tư pháp, Công ty tiến hành thu thập các thông tin cá nhân và dữ liệu cá nhân nhạy cảm của Anh/Chị theo đúng biểu mẫu quy định.</p>
+        <p><strong>Mục đích xử lý dữ liệu:</strong> Cung cấp thông tin cho cơ quan Công an có thẩm quyền theo yêu cầu để thực hiện làm sạch dữ liệu và tích hợp trên VNeID.</p>
+        <p><strong>Loại dữ liệu thu thập:</strong> Họ tên, ngày sinh, giới tính, CCCD, địa chỉ, cùng các dữ liệu cá nhân nhạy cảm theo yêu cầu quản lý (dân tộc, tôn giáo, thông tin về hộ nghèo, người khuyết tật, gia đình chính sách, người có công...).</p>
+        <p><strong>Tổ chức tiếp nhận và xử lý:</strong> Công ty (thu thập tổng hợp) và chuyển giao cho lực lượng Công an xã/phường/đồn công an khu công nghiệp nơi doanh nghiệp đặt trụ sở.</p>
+        <p><strong>Quyền của chủ thể dữ liệu:</strong> Anh/Chị có quyền yêu cầu truy cập, chỉnh sửa, xóa hoặc rút lại sự đồng ý đối với dữ liệu của mình theo quy định pháp luật.</p>
+        <p>Sau khi đọc kỹ các thông tin trên, Anh/Chị vui lòng xác nhận sự đồng ý bên dưới để tiếp tục chuyển sang bước kê khai thông tin theo biểu mẫu.</p>
+      </div>
+
+      <h3>Bạn có đồng ý cung cấp thông tin cá nhân và dữ liệu cá nhân nhạy cảm theo mục đích nêu trên hay không?</h3>
+
+      <label class="radio">
+        <input type="radio" name="consent" id="consentYes" value="yes">
+        <span>Tôi đồng ý</span>
+      </label>
+      <label class="radio">
+        <input type="radio" name="consent" id="consentNo" value="no">
+        <span>Tôi không đồng ý</span>
+      </label>
+
+      <div class="actions">
+        <button type="button" onclick="submitConsent()">Tiếp tục</button>
+        <button type="button" class="secondary" onclick="logoutEmployee()">Thoát</button>
+      </div>
+    </section>
+
+    <!-- FORM -->
+    <section id="formSection" class="hidden">
       <h2>BIỂU MẪU KÊ KHAI THÔNG TIN NGƯỜI LAO ĐỘNG</h2>
-      <p><strong>Lưu ý:</strong> Họ tên và CCCD được đối chiếu từ danh sách nhân viên, bạn không cần nhập lại.</p>
-      <!-- Các trường nhập dữ liệu của bạn giữ nguyên... -->
-      <button onclick="submitForm()">Gửi thông tin</button>
-      <button onclick="showSection('employeeLoginSection')">Thoát</button>
-    </div>
+      <p>Vui lòng điền chính xác các thông tin dưới đây để Công ty tổng hợp báo cáo cơ quan Công an.</p>
 
-    <!-- SECTION 4: ĐĂNG NHẬP ADMIN -->
-    <div id="adminLoginSection" style="display:none;">
+      <div id="employeeBadge" class="employee-badge"></div>
+
+      <div class="grid">
+        <div>
+          <label>Họ và tên</label>
+          <input id="hoTen" type="text" readonly>
+        </div>
+        <div>
+          <label>Số CCCD</label>
+          <input id="cccdDisplay" type="text" readonly>
+        </div>
+        <div>
+          <label for="ngaySinh">Ngày, tháng, năm sinh <span class="required">*</span></label>
+          <input id="ngaySinh" type="date">
+        </div>
+        <div>
+          <label for="gioiTinh">Giới tính</label>
+          <select id="gioiTinh">
+            <option value="">-- Chọn --</option>
+            <option value="Nam">Nam</option>
+            <option value="Nữ">Nữ</option>
+            <option value="Khác">Khác</option>
+          </select>
+        </div>
+        <div>
+          <label for="danToc">Dân tộc</label>
+          <input id="danToc" type="text" maxlength="100" placeholder="Ví dụ: Kinh">
+        </div>
+        <div>
+          <label for="tonGiao">Tôn giáo <span class="required">*</span></label>
+          <input id="tonGiao" type="text" maxlength="100" placeholder="Ví dụ: Không">
+        </div>
+      </div>
+
+      <label for="diaChiThuongTru">Địa chỉ thường trú <span class="required">*</span></label>
+      <textarea id="diaChiThuongTru" maxlength="2000" placeholder="Nhập đầy đủ địa chỉ thường trú"></textarea>
+
+      <label for="trinhDoChuyenMon">Trình độ / Chuyên môn</label>
+      <input id="trinhDoChuyenMon" type="text" maxlength="300" placeholder="Nhập trình độ hoặc chuyên môn">
+
+      <label for="mienGiam">Thông tin miễn, giảm theo Thông tư số 16/2025/TT-BTC</label>
+      <textarea id="mienGiam" maxlength="2000"
+        placeholder="Có thể nhập nhiều nội dung, ví dụ: hộ nghèo/cận nghèo; người khuyết tật; xã đặc biệt khó khăn; thân nhân liệt sĩ; người có công..."></textarea>
+
+      <div class="notice" style="margin-top:16px">
+        <strong>Lưu ý:</strong> Họ tên và số CCCD được đối chiếu từ danh sách nhân viên. Bạn không cần nhập lại.
+      </div>
+
+      <div id="formError" class="error"></div>
+
+      <div class="actions">
+        <button id="btnSubmitForm" type="button" onclick="submitForm()">Gửi thông tin</button>
+        <button type="button" class="secondary" onclick="logoutEmployee()">Thoát</button>
+      </div>
+    </section>
+
+    <!-- ADMIN LOGIN -->
+    <section id="adminLoginSection" class="hidden">
       <h2>Đăng nhập Admin</h2>
-      <label>Tài khoản</label> <input type="text" id="adminUser"><br><br>
-      <label>Mật khẩu</label> <input type="password" id="adminPass"><br><br>
-      <!-- FIX: Gắn ID và sự kiện onclick kích hoạt hiệu ứng chờ -->
-      <button id="btnAdminLogin" onclick="handleAdminLogin()">Đăng nhập</button>
-      <button onclick="showSection('employeeLoginSection')">Quay lại</button>
-    </div>
 
-    <!-- SECTION 5: DASHBOARD ADMIN -->
-    <div id="adminDashboardSection" style="display:none;">
+      <label for="adminUser">Tài khoản</label>
+      <input id="adminUser" type="text" autocomplete="username">
+
+      <label for="adminPass">Mật khẩu</label>
+      <input id="adminPass" type="password" autocomplete="current-password">
+
+      <div id="adminLoginError" class="error"></div>
+
+      <div class="actions">
+        <button id="btnAdminLogin" type="button" onclick="handleAdminLogin()">Đăng nhập</button>
+        <button type="button" class="secondary" onclick="showSection('employeeLoginSection')">Quay lại</button>
+      </div>
+    </section>
+
+    <!-- ADMIN DASHBOARD -->
+    <section id="adminDashboardSection" class="hidden">
       <h2>Dashboard Admin</h2>
       <p>Theo dõi tình trạng kê khai của toàn bộ nhân viên.</p>
-      <button onclick="loadAdminDashboard()">Làm mới</button>
-      <button onclick="showSection('adminChangePasswordSection')">Đổi mật khẩu</button>
-      <button onclick="handleAdminLogout()">Đăng xuất</button>
-      
-      <h3>Danh sách nhân viên</h3>
-      <!-- Bảng danh sách dữ liệu đổ từ Sheets của bạn... -->
-    </div>
 
-    <!-- SECTION 6: ĐỔI MẬT KHẨU ADMIN -->
-    <div id="adminChangePasswordSection" style="display:none;">
+      <div class="actions">
+        <button type="button" onclick="loadAdminDashboard()">Làm mới</button>
+        <button type="button" class="secondary" onclick="showSection('adminChangePasswordSection')">Đổi mật khẩu</button>
+        <button type="button" class="danger" onclick="handleAdminLogout()">Đăng xuất</button>
+      </div>
+
+      <div id="summary" class="summary"></div>
+
+      <label for="adminSearch">Tìm kiếm nhân viên</label>
+      <input id="adminSearch" type="search" placeholder="Mã NV, họ tên, CCCD..." oninput="renderAdminTable()">
+
+      <div class="table-wrap" style="margin-top:14px">
+        <table>
+          <thead>
+            <tr>
+              <th>Mã NV</th>
+              <th>Họ tên</th>
+              <th>CCCD</th>
+              <th>Trạng thái</th>
+              <th>Đồng ý</th>
+              <th>Cập nhật</th>
+            </tr>
+          </thead>
+          <tbody id="adminTableBody">
+            <tr><td colspan="6">Chưa có dữ liệu.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- CHANGE PASSWORD -->
+    <section id="adminChangePasswordSection" class="hidden">
       <h2>Đổi mật khẩu Admin</h2>
-      <label>Mật khẩu hiện tại</label> <input type="password" id="oldPassword"><br><br>
-      <label>Mật khẩu mới (tối thiểu 10 ký tự)</label> <input type="password" id="newPassword"><br><br>
-      <label>Xác nhận mật khẩu mới</label> <input type="password" id="confirmPassword"><br><br>
-      <button onclick="handleAdminChangePassword()">Đổi mật khẩu</button>
-      <button onclick="showSection('adminDashboardSection')">Hủy</button>
-    </div>
+
+      <label for="oldPassword">Mật khẩu hiện tại</label>
+      <input id="oldPassword" type="password" autocomplete="current-password">
+
+      <label for="newPassword">Mật khẩu mới (tối thiểu 10 ký tự)</label>
+      <input id="newPassword" type="password" autocomplete="new-password">
+
+      <label for="confirmPassword">Xác nhận mật khẩu mới</label>
+      <input id="confirmPassword" type="password" autocomplete="new-password">
+
+      <div id="passwordError" class="error"></div>
+
+      <div class="actions">
+        <button type="button" onclick="handleAdminChangePassword()">Đổi mật khẩu</button>
+        <button type="button" class="secondary" onclick="showSection('adminDashboardSection')">Hủy</button>
+      </div>
+    </section>
   </div>
+</div>
 
-  <!-- ==========================================================================
-       TOÀN BỘ MÃ JAVASCRIPT XỬ LÝ LOGIC API & HIỆU ỨNG LOADING CHỜ ĐỢI
-       ========================================================================== -->
-  <script>
-    // ⚠️ QUAN TRỌNG: Hãy thay thế đường dẫn URL Web App (đuôi /exec) của bạn vào đây
-    const API_URL = 'https://script.google.com/macros/s/AKfycbxhngXz5IXZ-Oge8Ro3pkSCs4uzssxQGUbZX5kX4AjUl1fFIj2qWRw7QZRxez8eNrpV/exec';
+<script>
+'use strict';
 
-    // Hàm bổ trợ chuyển đổi ẩn/hiển thị giữa các màn hình giao diện công việc
-    function showSection(sectionId) {
-      const sections = ['employeeLoginSection', 'consentSection', 'formSection', 'adminLoginSection', 'adminDashboardSection', 'adminChangePasswordSection'];
-      sections.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = (id === sectionId) ? 'block' : 'none';
-      });
-    }
+/* THAY URL NAY BANG URL /exec CUA GOOGLE APPS SCRIPT */
+const API_URL = 'https://script.google.com/macros/s/AKfycbxhngXz5IXZ-Oge8Ro3pkSCs4uzssxQGUbZX5kX4AjUl1fFIj2qWRw7QZRxez8eNrpV/exec';
 
-    // Hàm helper dùng chung để điều khiển Loading Overlay & Disable nút
-function setLoading(isLoading) {
-  const loading = document.getElementById('loadingOverlay');
-  if (loading) loading.style.display = isLoading ? 'block' : 'none';
-  
-  // Khóa tất cả các nút bấm khi đang gọi API
-  const buttons = document.querySelectorAll('button');
-  buttons.forEach(btn => btn.disabled = isLoading);
+const state = {
+  employee: null,
+  adminRows: []
+};
+
+const sections = [
+  'employeeLoginSection',
+  'consentSection',
+  'formSection',
+  'adminLoginSection',
+  'adminDashboardSection',
+  'adminChangePasswordSection'
+];
+
+function $(id) {
+  return document.getElementById(id);
 }
 
-// Bổ sung xử lý gửi đồng ý (submitConsent) chống bấm đúp
-function submitConsent() {
-  const token = localStorage.getItem('empToken');
-  const consentYes = document.getElementById('consentYes').checked;
-  const consentNo = document.getElementById('consentNo').checked;
+function showSection(id) {
+  sections.forEach(function(sectionId) {
+    const el = $(sectionId);
+    if (el) el.classList.toggle('hidden', sectionId !== id);
+  });
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
 
-  if (!consentYes && !consentNo) {
+function setLoading(loading, text) {
+  const overlay = $('loadingOverlay');
+  if (!overlay) return;
+
+  overlay.style.display = loading ? 'flex' : 'none';
+  overlay.setAttribute('aria-hidden', loading ? 'false' : 'true');
+
+  if (text) $('loadingText').innerHTML = '<strong>' + escapeHtml(text) + '</strong>';
+
+  document.querySelectorAll('button').forEach(function(btn) {
+    btn.disabled = loading;
+  });
+}
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+async function api(action, payload) {
+  const controller = new AbortController();
+  const timer = setTimeout(function() { controller.abort(); }, 30000);
+
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: JSON.stringify(Object.assign({action: action}, payload || {})),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error('API HTTP ' + response.status);
+    }
+
+    const data = await response.json();
+
+    if (!data || typeof data !== 'object') {
+      throw new Error('API tra ve du lieu khong hop le.');
+    }
+
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Ket noi qua thoi gian cho. Vui long thu lai.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function clearEmployeeSession() {
+  localStorage.removeItem('empToken');
+  state.employee = null;
+}
+
+function clearAdminSession() {
+  localStorage.removeItem('adminToken');
+}
+
+function normalizeCCCD(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 12);
+}
+
+async function handleEmployeeLogin() {
+  const input = $('inputCCCD');
+  const error = $('employeeLoginError');
+  const cccd = normalizeCCCD(input.value);
+
+  error.textContent = '';
+
+  if (!/^\d{9,12}$/.test(cccd)) {
+    error.textContent = 'Vui lòng nhập CCCD gồm 9 đến 12 chữ số.';
+    input.focus();
+    return;
+  }
+
+  setLoading(true, 'Đang kiểm tra CCCD...');
+
+  try {
+    const data = await api('employeeLogin', {cccd: cccd});
+
+    if (!data.ok) {
+      error.textContent = data.message || 'Không tìm thấy thông tin.';
+      return;
+    }
+
+    localStorage.setItem('empToken', data.token);
+    state.employee = data.employee;
+
+    $('consentYes').checked = false;
+    $('consentNo').checked = false;
+
+    $('employeeBadge').innerHTML =
+      '<strong>' + escapeHtml(data.employee.hoTen) + '</strong>' +
+      '<br>Mã NV: ' + escapeHtml(data.employee.maNV) +
+      '<br>CCCD: ' + escapeHtml(data.employee.cccd);
+
+    $('hoTen').value = data.employee.hoTen || '';
+    $('cccdDisplay').value = data.employee.cccd || '';
+
+    if (data.previous && data.previous.Status === 'Da hoan tat') {
+      const ok = confirm('Hồ sơ của bạn đã được kê khai trước đó. Nếu tiếp tục, thông tin mới sẽ cập nhật hồ sơ hiện tại. Bạn có muốn tiếp tục không?');
+      if (!ok) {
+        clearEmployeeSession();
+        return;
+      }
+    }
+
+    showSection('consentSection');
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function submitConsent() {
+  const token = localStorage.getItem('empToken');
+  const yes = $('consentYes').checked;
+  const no = $('consentNo').checked;
+
+  if (!yes && !no) {
     alert('Vui lòng chọn Đồng ý hoặc Không đồng ý.');
     return;
   }
 
-  setLoading(true);
+  if (!token) {
+    alert('Phiên làm việc đã hết. Vui lòng đăng nhập lại.');
+    showSection('employeeLoginSection');
+    return;
+  }
 
-  fetch(API_URL, {
-    method: 'POST',
-    body: JSON.stringify({
-      action: 'saveConsent',
+  setLoading(true, 'Đang ghi nhận lựa chọn...');
+
+  try {
+    const data = await api('saveConsent', {
       token: token,
-      consent: consentYes
-    })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.ok) {
-      if (data.next === 'form') {
-        showSection('formSection');
-      } else {
-        alert(data.message || 'Cảm ơn bạn đã xác nhận.');
-        showSection('employeeLoginSection');
-      }
-    } else {
-      alert(data.message || 'Xảy ra lỗi khi lưu xác nhận.');
+      consent: yes
+    });
+
+    if (!data.ok) {
+      alert(data.message || 'Không thể lưu lựa chọn.');
+      return;
     }
-  })
-  .catch(err => alert('Lỗi mạng: ' + err.message))
-  .finally(() => setLoading(false));
+
+    if (data.next === 'form') {
+      showSection('formSection');
+    } else {
+      clearEmployeeSession();
+      alert(data.message || 'Đã ghi nhận lựa chọn.');
+      resetEmployeeForm();
+      showSection('employeeLoginSection');
+    }
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    setLoading(false);
+  }
 }
 
-// Bổ sung xử lý submit form kê khai
-function submitForm() {
+function resetEmployeeForm() {
+  $('inputCCCD').value = '';
+  $('ngaySinh').value = '';
+  $('gioiTinh').value = '';
+  $('danToc').value = '';
+  $('tonGiao').value = '';
+  $('diaChiThuongTru').value = '';
+  $('trinhDoChuyenMon').value = '';
+  $('mienGiam').value = '';
+  $('hoTen').value = '';
+  $('cccdDisplay').value = '';
+  $('formError').textContent = '';
+  $('employeeLoginError').textContent = '';
+}
+
+async function submitForm() {
   const token = localStorage.getItem('empToken');
-  
-  // Lấy giá trị các trường
+  const error = $('formError');
+  error.textContent = '';
+
+  if (!token) {
+    error.textContent = 'Phiên làm việc đã hết. Vui lòng đăng nhập lại.';
+    showSection('employeeLoginSection');
+    return;
+  }
+
   const payload = {
-    action: 'submitForm',
     token: token,
     consent: true,
-    ngaySinh: document.getElementById('ngaySinh') ? document.getElementById('ngaySinh').value : '',
-    gioiTinh: document.getElementById('gioiTinh') ? document.getElementById('gioiTinh').value : '',
-    danToc: document.getElementById('danToc') ? document.getElementById('danToc').value : '',
-    tonGiao: document.getElementById('tonGiao') ? document.getElementById('tonGiao').value : '',
-    diaChiThuongTru: document.getElementById('diaChiThuongTru') ? document.getElementById('diaChiThuongTru').value : '',
-    trinhDoChuyenMon: document.getElementById('trinhDoChuyenMon') ? document.getElementById('trinhDoChuyenMon').value : '',
-    mienGiam: document.getElementById('mienGiam') ? document.getElementById('mienGiam').value : ''
+    ngaySinh: $('ngaySinh').value,
+    gioiTinh: $('gioiTinh').value,
+    danToc: $('danToc').value,
+    tonGiao: $('tonGiao').value,
+    diaChiThuongTru: $('diaChiThuongTru').value,
+    trinhDoChuyenMon: $('trinhDoChuyenMon').value,
+    mienGiam: $('mienGiam').value
   };
 
-  setLoading(true);
+  if (!payload.ngaySinh || !payload.tonGiao.trim() || !payload.diaChiThuongTru.trim()) {
+    error.textContent = 'Vui lòng điền đầy đủ các trường bắt buộc.';
+    return;
+  }
 
-  fetch(API_URL, {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.ok) {
-      alert('Đã lưu thông tin kê khai thành công!');
-      showSection('employeeLoginSection');
-    } else {
-      alert(data.message || 'Lỗi khi gửi biểu mẫu.');
-    }
-  })
-  .catch(err => alert('Lỗi mạng: ' + err.message))
-  .finally(() => setLoading(false));
-}
-    
-    // Hàm gọi xử lý đăng nhập người lao động khi bấm nút "Tiếp tục"
-    function handleEmployeeLogin() {
-      const cccdValue = document.getElementById('inputCCCD').value.trim();
-      if (!cccdValue) {
-        alert('Vui lòng nhập số CCCD trước khi tiếp tục.');
-        return;
-      }
+  setLoading(true, 'Đang lưu thông tin kê khai...');
 
-      const loading = document.getElementById('loadingOverlay');
-      const btn = document.getElementById('btnTiepTuc');
+  try {
+    const data = await api('submitForm', payload);
 
-      // 1. Kích hoạt bật màn hình chờ và vô hiệu hóa nút bấm
-      if(loading) loading.style.display = 'block';
-      if(btn) btn.disabled = true;
-
-      fetch(API_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'employeeLogin',
-          cccd: cccdValue
-        })
-      })
-      .then(res => {
-        if (!res.ok) throw new Error('Kết nối API thất bại, Server Apps Script gặp sự cố.');
-        return res.json();
-      })
-      .then(data => {
-        if (data.ok) {
-          localStorage.setItem('empToken', data.token);
-          alert('Đăng nhập thành công!');
-          showSection('consentSection'); // Chuyển sang màn hình xác nhận đồng ý công văn số 16043/BQL-LĐ
-        } else {
-          alert(data.message || 'Số CCCD không tồn tại trên hệ thống nhân sự.');
-        }
-      })
-      .catch(err => {
-        alert('Lỗi kết nối mạng: ' + err.message);
-      })
-      .finally(() => {
-        // 2. Tắt màn hình chờ và kích hoạt lại nút bấm khi hoàn tất phản hồi
-        if(loading) loading.style.display = 'none';
-        if(btn) btn.disabled = false;
-      });
+    if (!data.ok) {
+      error.textContent = data.message || 'Không thể lưu biểu mẫu.';
+      return;
     }
 
-    // Hàm gọi xử lý đăng nhập Admin khi bấm nút "Đăng nhập" ở Section Admin
-    function handleAdminLogin() {
-      const userVal = document.getElementById('adminUser').value.trim();
-      const passVal = document.getElementById('adminPass').value;
+    clearEmployeeSession();
+    resetEmployeeForm();
 
-      if (!userVal || !passVal) {
-        alert('Vui lòng điền đầy đủ tài khoản và mật khẩu quản trị.');
-        return;
-      }
-
-      const loading = document.getElementById('loadingOverlay');
-      const btn = document.getElementById('btnAdminLogin');
-
-      // 1. Bật màn hình chờ và tạm khóa nút bấm Admin
-      if(loading) loading.style.display = 'block';
-      if(btn) btn.disabled = true;
-
-      fetch(API_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'adminLogin',
-          username: userVal,
-          password: passVal
-        })
-      })
-      .then(res => {
-        if (!res.ok) throw new Error('Không nhận được phản hồi kết nối định dạng JSON từ Server.');
-        return res.json();
-      })
-      .then(data => {
-        if (data.ok) {
-          localStorage.setItem('adminToken', data.token);
-          alert('Đăng nhập quản trị viên thành công!');
-          showSection('adminDashboardSection');
-          loadAdminDashboard(); // Gọi tải luôn danh sách nhân viên lên bảng điều khiển
-        } else {
-          alert(data.message || 'Tài khoản hoặc mật khẩu quản trị không chính xác.');
-        }
-      })
-      .catch(err => {
-        alert('Hệ thống gặp lỗi: ' + err.message);
-      })
-      .finally(() => {
-        // 2. Giải phóng khóa nút bấm và ẩn màn hình chờ
-        if(loading) loading.style.display = 'none';
-        if(btn) btn.disabled = false;
-      });
-    }
-
-    // Hàm đổi mật khẩu của Admin
-    function handleAdminChangePassword() {
-      const token = localStorage.getItem('adminToken');
-      const oldPass = document.getElementById('oldPassword').value;
-      const newPass = document.getElementById('newPassword').value;
-      const confPass = document.getElementById('confirmPassword').value;
-
-      if (!oldPass || !newPass || !confPass) {
-        alert('Vui lòng điền đủ thông tin mật khẩu vào các ô.');
-        return;
-      }
-
-      const loading = document.getElementById('loadingOverlay');
-      if(loading) loading.style.display = 'block';
-
-      fetch(API_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'adminChangePassword',
-          token: token,
-          oldPassword: oldPass,
-          newPassword: newPass,
-          confirmPassword: confPass
-        })
-      })
-      .then(res => res.json())
-      .then(data => {
-         if (data.ok) {
-    alert('Thay đổi mật khẩu hệ thống Admin thành công!');
-    showSection('adminDashboardSection');
-    } else {
-    alert(data.message || 'Không thể đổi mật khẩu, vui lòng thử lại.');
-    }
-    })
-    .catch(err => alert('Lỗi hệ thống: ' + err.message))
-    .finally(() => {
-    if(loading) loading.style.display = 'none';
-    });
-    }
-    // Hàm tải dữ liệu lên Dashboard danh sách nhân viên
-    function loadAdminDashboard() {
-    const token = localStorage.getItem('adminToken');
-    const loading = document.getElementById('loadingOverlay');
-    if(loading) loading.style.display = 'block';
-    fetch(API_URL, {
-    method: 'POST',
-    body: JSON.stringify({ action: 'adminDashboard', token: token })
-    })
-    .then(res => res.json())
-    .then(data => {
-    if (data.ok) {
-    console.log('Đã nạp danh sách:', data.rows);
-    // Viết thêm logic Render bảng danh sách dữ liệu data.rows của bạn tại đây...
-    }
-    })
-    .catch(err => console.error(err))
-    .finally(() => {
-    if(loading) loading.style.display = 'none';
-    });
-    }
-    // Đăng xuất Admin
-    function handleAdminLogout() {
-    const token = localStorage.getItem('adminToken');
-    fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'adminLogout', token: token }) });
-    localStorage.removeItem('adminToken');
+    alert(data.message || 'Đã lưu thông tin thành công.');
     showSection('employeeLoginSection');
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    setLoading(false);
+  }
+}
+
+function logoutEmployee() {
+  clearEmployeeSession();
+  resetEmployeeForm();
+  showSection('employeeLoginSection');
+}
+
+async function handleAdminLogin() {
+  const user = $('adminUser').value.trim();
+  const pass = $('adminPass').value;
+  const error = $('adminLoginError');
+
+  error.textContent = '';
+
+  if (!user || !pass) {
+    error.textContent = 'Vui lòng nhập đầy đủ tài khoản và mật khẩu.';
+    return;
+  }
+
+  setLoading(true, 'Đang đăng nhập Admin...');
+
+  try {
+    const data = await api('adminLogin', {
+      username: user,
+      password: pass
+    });
+
+    if (!data.ok) {
+      error.textContent = data.message || 'Tài khoản hoặc mật khẩu không đúng.';
+      return;
     }
+
+    localStorage.setItem('adminToken', data.token);
+    $('adminPass').value = '';
+
+    showSection('adminDashboardSection');
+    await loadAdminDashboard();
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function loadAdminDashboard() {
+  const token = localStorage.getItem('adminToken');
+
+  if (!token) {
+    showSection('adminLoginSection');
+    return;
+  }
+
+  setLoading(true, 'Đang tải dữ liệu Dashboard...');
+
+  try {
+    const data = await api('adminDashboard', {token: token});
+
+    if (!data.ok) {
+      if (data.error === 'UNAUTHORIZED') {
+        clearAdminSession();
+        alert(data.message || 'Phiên Admin đã hết hạn.');
+        showSection('adminLoginSection');
+      } else {
+        alert(data.message || 'Không thể tải Dashboard.');
+      }
+      return;
+    }
+
+    state.adminRows = Array.isArray(data.rows) ? data.rows : [];
+    renderSummary(data.summary || {});
+    renderAdminTable();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function renderSummary(summary) {
+  $('summary').innerHTML =
+    '<div class="box">Tổng nhân viên<b>' + (summary.totalEmployees || 0) + '</b></div>' +
+    '<div class="box">Đã hoàn tất<b>' + (summary.completed || 0) + '</b></div>' +
+    '<div class="box">Đang kê khai<b>' + (summary.inProgress || 0) + '</b></div>' +
+    '<div class="box">Từ chối / Chưa điền<b>' +
+      ((summary.refused || 0) + (summary.notStarted || 0)) +
+    '</b></div>';
+}
+
+function statusHtml(status) {
+  if (status === 'Da hoan tat') return '<span class="status done">Đã hoàn tất</span>';
+  if (status === 'Dang ke khai') return '<span class="status progress">Đang kê khai</span>';
+  if (status === 'Tu choi') return '<span class="status refused">Từ chối</span>';
+  return '<span class="status new">Chưa điền</span>';
+}
+
+function renderAdminTable() {
+  const body = $('adminTableBody');
+  const q = $('adminSearch').value.trim().toLowerCase();
+
+  const rows = state.adminRows.filter(function(row) {
+    if (!q) return true;
+
+    return [
+      row.maNV,
+      row.hoTen,
+      row.cccd,
+      row.status,
+      row.consent
+    ].some(function(value) {
+      return String(value || '').toLowerCase().includes(q);
+    });
+  });
+
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6">Không tìm thấy dữ liệu phù hợp.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = rows.map(function(row) {
+    return '<tr>' +
+      '<td>' + escapeHtml(row.maNV) + '</td>' +
+      '<td>' + escapeHtml(row.hoTen) + '</td>' +
+      '<td>' + escapeHtml(row.cccd) + '</td>' +
+      '<td>' + statusHtml(row.status) + '</td>' +
+      '<td>' + escapeHtml(row.consent || '') + '</td>' +
+      '<td>' + escapeHtml(row.updatedAt || '') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+async function handleAdminChangePassword() {
+  const token = localStorage.getItem('adminToken');
+  const error = $('passwordError');
+
+  const oldPassword = $('oldPassword').value;
+  const newPassword = $('newPassword').value;
+  const confirmPassword = $('confirmPassword').value;
+
+  error.textContent = '';
+
+  if (!oldPassword || !newPassword || !confirmPassword) {
+    error.textContent = 'Vui lòng điền đủ thông tin mật khẩu.';
+    return;
+  }
+
+  if (newPassword.length < 10) {
+    error.textContent = 'Mật khẩu mới phải có ít nhất 10 ký tự.';
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    error.textContent = 'Xác nhận mật khẩu không khớp.';
+    return;
+  }
+
+  setLoading(true, 'Đang đổi mật khẩu...');
+
+  try {
+    const data = await api('adminChangePassword', {
+      token: token,
+      oldPassword: oldPassword,
+      newPassword: newPassword,
+      confirmPassword: confirmPassword
+    });
+
+    if (!data.ok) {
+      if (data.error === 'UNAUTHORIZED') {
+        clearAdminSession();
+        showSection('adminLoginSection');
+      }
+      error.textContent = data.message || 'Không thể đổi mật khẩu.';
+      return;
+    }
+
+    $('oldPassword').value = '';
+    $('newPassword').value = '';
+    $('confirmPassword').value = '';
+
+    alert(data.message || 'Đã đổi mật khẩu.');
+    showSection('adminDashboardSection');
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function handleAdminLogout() {
+  const token = localStorage.getItem('adminToken');
+
+  try {
+    if (token) {
+      await api('adminLogout', {token: token});
+    }
+  } catch (err) {
+    // Logout local van thuc hien duoc neu API loi.
+  } finally {
+    clearAdminSession();
+    state.adminRows = [];
+    showSection('employeeLoginSection');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  showSection('employeeLoginSection');
+
+  $('inputCCCD').addEventListener('input', function() {
+    this.value = normalizeCCCD(this.value);
+  });
+
+  $('inputCCCD').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') handleEmployeeLogin();
+  });
+
+  $('adminPass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') handleAdminLogin();
+  });
+});
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@ const MIEN_GIAM_ALLOWED_ = [
 
 /**
  * HỆ THỐNG THU THẬP DỮ LIỆU LÝ LỊCH TƯ PHÁP
- * Google Apps Script Backend - Phiên bản Tối ưu hóa Toàn diện
+ * Google Apps Script Backend - Phiên bản không lỗi xuất Excel
  * Cập nhật: 23/09/2026
  */
 
@@ -22,7 +22,7 @@ const CONFIG = Object.freeze({
 
   PEPPER_PROPERTY: 'PASSWORD_PEPPER',
   SPREADSHEET_PROPERTY: 'SPREADSHEET_ID',
-  DEADLINE_PROPERTY: 'SYSTEM_DEADLINE', // Lưu trữ thời hạn đóng link
+  DEADLINE_PROPERTY: 'SYSTEM_DEADLINE', // Thuộc tính lưu thời hạn cấu hình từ Admin
 
   MAX_TEXT: 2000,
   MAX_CCCD_LENGTH: 12,
@@ -50,7 +50,7 @@ function setup() {
     props.setProperty(CONFIG.PEPPER_PROPERTY, randomHex_(64));
   }
   
-  // Đặt cấu hình thời hạn mặc định nếu chưa có (Định dạng: YYYY-MM-DDTHH:mm)
+  // Đặt cấu hình thời hạn biểu mẫu mặc định ban đầu nếu chưa thiết lập
   if (!props.getProperty(CONFIG.DEADLINE_PROPERTY)) {
     props.setProperty(CONFIG.DEADLINE_PROPERTY, '2026-12-31T23:59');
   }
@@ -64,7 +64,7 @@ function setup() {
   }
 
   clearDataCaches_();
-  return 'Setup completed successfully.';
+  return 'Setup completed.';
 }
 
 /* ========================= HTTP INTERFACES ========================= */
@@ -74,7 +74,7 @@ function doGet() {
   return json_({
     ok: true,
     service: 'ly-lich-tu-phap-api',
-    version: '3.0',
+    version: '3.1',
     time: new Date().toISOString(),
     deadline: deadlineStr,
     isExpired: isLinkExpired_()
@@ -86,14 +86,14 @@ function doPost(e) {
     const body = parseRequest_(e);
     const action = String(body.action || '').trim();
 
-    // Loại trừ các hành động của Admin ra khỏi kiểm tra đóng link, để Admin luôn luôn vào cấu hình lại ngày được
+    // Ngoại lệ các tính năng của Admin: Admin vẫn vào được Dashboard kể cả khi link khai báo của nhân viên hết hạn
     const isAdminAction = ['adminLogin', 'adminDashboard', 'adminChangePassword', 'adminLogout', 'adminDownloadExcel', 'adminSetDeadline'].indexOf(action) >= 0;
 
     if (!isAdminAction && isLinkExpired_()) {
       return json_({
         ok: false,
         error: 'LINK_EXPIRED',
-        message: 'Hệ thống đã khóa! Biểu mẫu thu thập thông tin lý lịch tư pháp đã hết thời hạn quy định.'
+        message: 'Hệ thống đã khóa! Liên kết thu thập thông tin đã hết thời hạn quy định.'
       });
     }
 
@@ -107,8 +107,8 @@ function doPost(e) {
       case 'adminDashboard': return adminDashboard_(body);
       case 'adminChangePassword': return adminChangePassword_(body);
       case 'adminLogout': return adminLogout_(body);
-      case 'adminDownloadExcel': return adminDownloadExcel_(body);
-      case 'adminSetDeadline': return adminSetDeadline_(body); // Chức năng thay đổi hạn chót mới
+      case 'adminDownloadExcel': return adminDownloadExcel_(body); // Tải Excel trực tiếp từ dữ liệu mảng
+      case 'adminSetDeadline': return adminSetDeadline_(body);     // Lưu cấu hình hạn chót mới từ Admin
 
       default:
         return json_({ ok: false, error: 'INVALID_ACTION', message: 'Yeu cau khong hop le.' });
@@ -132,7 +132,7 @@ function parseRequest_(e) {
   }
 }
 
-/* ========================= KIỂM TRA HẾT HẠN ========================= */
+/* ========================= ĐÓNG LINK / KIỂM TRA HẾT HẠN ========================= */
 
 function isLinkExpired_() {
   const deadlineStr = PropertiesService.getScriptProperties().getProperty(CONFIG.DEADLINE_PROPERTY);
@@ -337,7 +337,7 @@ function adminLogin_(b) {
   }
 
   const hash = hashPassword_(password, admin.salt);
-  if (!secureEqual_(hash, admin.hash)) {
+if (!secureEqual_(hash, admin.hash)) {
 return json_({ ok: false, error: 'INVALID_LOGIN', message: 'Tai khoan hoac mat khau khong dung.' });
 }
 const token = createSession_('admin', { username: username });
@@ -386,47 +386,53 @@ return json_({
 ok: true,
 summary: summary,
 rows: list,
-deadline: deadlineStr // Trả thời hạn hiện tại về màn hình quản lý
+deadline: deadlineStr
 });
 }
+// LƯU CẤU HÌNH THỜI HẠN MỚI TỪ GIAO DIỆN ADMIN
 function adminSetDeadline_(b) {
 const session = requireAdminSession_(b.token);
-if (!session) {
-return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Hết phiên làm việc.' });
-}
-const newDeadline = String(b.deadline || '').trim(); // Định dạng mong đợi: YYYY-MM-DDTHH:mm
+if (!session) return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Hết phiên làm việc.' });
+const newDeadline = String(b.deadline || '').trim(); // Định dạng: YYYY-MM-DDTHH:mm
 if (!newDeadline || isNaN(new Date(newDeadline).getTime())) {
-return json_({ ok: false, error: 'INVALID_FORMAT', message: 'Định dạng thời gian không đúng.' });
+return json_({ ok: false, error: 'INVALID_FORMAT', message: 'Định dạng thời gian hạn chót không hợp lệ.' });
 }
 PropertiesService.getScriptProperties().setProperty(CONFIG.DEADLINE_PROPERTY, newDeadline);
-return json_({ ok: true, message: 'Đã cập nhật thời hạn đóng liên kết thành công!' });
+return json_({ ok: true, message: 'Cập nhật thời hạn đóng liên kết thành công!' });
 }
+// HÀM XUẤT FILE MỚI: Đọc mảng trực tiếp từ Sheet Responses chuyển sang chuỗi văn bản dữ liệu an toàn để tránh lỗi UrlFetch
 function adminDownloadExcel_(b) {
 const session = requireAdminSession_(b.token);
-if (!session) {
-return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Phiên quản trị viên đã hết hạn.' });
-}
+if (!session) return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Phiên quản trị viên đã hết hạn.' });
 try {
-const ss = getSS_();
-const sheetId = ss.getSheetByName(CONFIG.RESPONSE_SHEET).getSheetId();
-const url = ss.getUrl().replace(/edit$/, '') + 'export?format=xlsx&gid=' + sheetId;
-const response = UrlFetchApp.fetch(url, {
-headers: { 'Authorization': 'Bearer ' + ScriptApp.getOAuthToken() },
-muteHttpExceptions: true
-});
-if (response.getResponseCode() !== 200) {
-throw new Error('Google API từ chối xuất dữ liệu: ' + response.getContentText());
+const sheet = getSheet_(CONFIG.RESPONSE_SHEET);
+const data = sheet.getDataRange().getDisplayValues(); // Đọc dạng chuỗi hiển thị đã định dạng sẵn trên sheet
+if (data.length === 0) throw new Error('Không có dữ liệu trong sheet phản hồi.');
+// Xây dựng chuỗi văn bản bảng dữ liệu thô (TSV) để tải về trình duyệt tự biên dịch thành tập tin Excel sạch
+const tsvLines = [];
+for (let i = 0; i < data.length; i++) {
+const escapedRow = data[i].map(function(cell) {
+let str = String(cell || '');
+if (str.indexOf('"') >= 0 || str.indexOf('\n') >= 0 || str.indexOf('\t') >= 0) {
+str = '"' + str.replace(/"/g, '""') + '"';
 }
-const base64Data = Utilities.base64Encode(response.getBlob().getBytes());
-const fileName = 'Responses_Export_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.xlsx';
+return str;
+});
+tsvLines.push(escapedRow.join('\t'));
+}
+const textContent = tsvLines.join('\r\n');
+// Mã hóa Base64 chuỗi ký tự UTF-8 kèm mã đánh dấu BOM (Byte Order Mark) giúp tránh lỗi font tiếng Việt khi mở bằng Excel
+const bomAndContent = '\uFEFF' + textContent;
+const base64Data = Utilities.base64Encode(bomAndContent, Utilities.Charset.UTF_8);
+const fileName = 'Responses_Export_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.xls';
 return json_({
 ok: true,
 fileName: fileName,
 fileData: base64Data,
-mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+mimeType: 'application/vnd.ms-excel'
 });
 } catch (err) {
-return json_({ ok: false, error: 'EXPORT_FAILED', message: 'Lỗi xuất Excel: ' + err.message });
+return json_({ ok: false, error: 'EXPORT_FAILED', message: 'Lỗi tạo dữ liệu: ' + err.message });
 }
 }
 function adminChangePassword_(b) {
@@ -555,7 +561,7 @@ if (lastCol < 1) throw new Error('Sheet Responses chua co cot.');
 const headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
 const base = Object.create(null);
 for (let i = 0; i < headers.length; i++) { base[headers[i]] = ''; }
-// ĐỊNH DẠNG HOÀN TOÀN CỘT TIMESTAMP dạng chuỗi TEXT trực tiếp
+// SỬA ĐỊNH DẠNG: Ép ghi hẳn chuỗi text ngày tháng tường minh dd/MM/yyyy HH:mm:ss vào cả 2 cột thời gian
 base.Timestamp = existing && existing.Timestamp ? formatDate_(existing.Timestamp) : formatDate_(new Date());
 base.SubmissionId = existing && existing.SubmissionId ? existing.SubmissionId : Utilities.getUuid();
 base.MaNV = session.maNV;
@@ -703,3 +709,4 @@ function safeMessage_(e) { return String(e && e.message ? e.message : e).slice(0
 function cachePutJson_(key, value, seconds) { try { CacheService.getScriptCache().put(key, JSON.stringify(value), seconds); } catch (err) { } }
 function clearDataCaches_() { const cache = CacheService.getScriptCache(); cache.remove('employees:v2'); cache.remove('responses:v2'); }
 function json_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
+

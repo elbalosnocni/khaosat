@@ -22,7 +22,7 @@ const CONFIG = Object.freeze({
 
   PEPPER_PROPERTY: 'PASSWORD_PEPPER',
   SPREADSHEET_PROPERTY: 'SPREADSHEET_ID',
-  DEADLINE_PROPERTY: 'SYSTEM_DEADLINE', // Thuộc tính lưu thời hạn cấu hình từ Admin
+  DEADLINE_PROPERTY: 'SYSTEM_DEADLINE', 
 
   MAX_TEXT: 2000,
   MAX_CCCD_LENGTH: 12,
@@ -56,7 +56,6 @@ function setup() {
     props.setProperty(CONFIG.PEPPER_PROPERTY, randomHex_(64));
   }
   
-  // Đặt cấu hình thời hạn biểu mẫu mặc định ban đầu nếu chưa thiết lập
   if (!props.getProperty(CONFIG.DEADLINE_PROPERTY)) {
     props.setProperty(CONFIG.DEADLINE_PROPERTY, '2026-12-31T23:59');
   }
@@ -92,7 +91,6 @@ function doPost(e) {
     const body = parseRequest_(e);
     const action = String(body.action || '').trim();
 
-    // Ngoại lệ các tính năng của Admin: Admin vẫn vào được Dashboard kể cả khi link khai báo của nhân viên hết hạn
     const isAdminAction = ['adminLogin', 'adminDashboard', 'adminChangePassword', 'adminLogout', 'adminDownloadExcel', 'adminSetDeadline'].indexOf(action) >= 0;
 
     if (!isAdminAction && isLinkExpired_()) {
@@ -113,8 +111,8 @@ function doPost(e) {
       case 'adminDashboard': return adminDashboard_(body);
       case 'adminChangePassword': return adminChangePassword_(body);
       case 'adminLogout': return adminLogout_(body);
-      case 'adminDownloadExcel': return adminDownloadExcel_(body); // Tải Excel trực tiếp từ dữ liệu mảng
-      case 'adminSetDeadline': return adminSetDeadline_(body);     // Lưu cấu hình hạn chót mới từ Admin
+      case 'adminDownloadExcel': return adminDownloadExcel_(body); 
+      case 'adminSetDeadline': return adminSetDeadline_(body);     
 
       default:
         return json_({ ok: false, error: 'INVALID_ACTION', message: 'Yeu cau khong hop le.' });
@@ -343,7 +341,7 @@ function adminLogin_(b) {
   }
 
   const hash = hashPassword_(password, admin.salt);
-if (!secureEqual_(hash, admin.hash)) {
+  if (!secureEqual_(hash, admin.hash)) {
 return json_({ ok: false, error: 'INVALID_LOGIN', message: 'Tai khoan hoac mat khau khong dung.' });
 }
 const token = createSession_('admin', { username: username });
@@ -395,11 +393,10 @@ rows: list,
 deadline: deadlineStr
 });
 }
-// LƯU CẤU HÌNH THỜI HẠN MỚI TỪ GIAO DIỆN ADMIN
 function adminSetDeadline_(b) {
 const session = requireAdminSession_(b.token);
 if (!session) return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Hết phiên làm việc.' });
-const newDeadline = String(b.deadline || '').trim(); // YYYY-MM-DDTHH:mm
+const newDeadline = String(b.deadline || '').trim();
 if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(newDeadline)) {
 return json_({ ok: false, error: 'INVALID_FORMAT', message: 'Định dạng thời gian hạn chót không hợp lệ.' });
 }
@@ -410,85 +407,68 @@ return json_({ ok: false, error: 'INVALID_FORMAT', message: 'Thời gian hạn c
 PropertiesService.getScriptProperties().setProperty(CONFIG.DEADLINE_PROPERTY, newDeadline);
 return json_({ ok: true, message: 'Cập nhật thời hạn đóng liên kết thành công!' });
 }
-// HÀM XUẤT FILE MỚI: Đọc mảng trực tiếp từ Sheet Responses chuyển sang chuỗi văn bản dữ liệu an toàn để tránh lỗi UrlFetch
 function adminDownloadExcel_(b) {
-  const session = requireAdminSession_(b.token);
-  if (!session) {
-    return json_({
-      ok: false,
-      error: 'UNAUTHORIZED',
-      message: 'Phiên quản trị viên đã hết hạn.'
-    });
-  }
-
-  let tempId = '';
-  try {
-    const source = getSheet_(CONFIG.RESPONSE_SHEET);
-    const data = source.getDataRange().getDisplayValues();
-
-    if (!data || data.length < 1) {
-      throw new Error('Không có dữ liệu trong sheet Responses.');
-    }
-
-    // Tạo một Spreadsheet tạm rồi dùng bộ xuất XLSX chính thức của Google.
-    // Cách này tạo ra file .xlsx thật, không phải TSV giả .xls.
-    const tempSs = SpreadsheetApp.create('TEMP_EXPORT_' + Utilities.getUuid());
-    tempId = tempSs.getId();
-    const tempSheet = tempSs.getSheets()[0];
-    tempSheet.setName('Responses');
-
-    const rows = data.length;
-    const cols = data[0].length;
-    if (rows > 0 && cols > 0) {
-      tempSheet.getRange(1, 1, rows, cols).setValues(data);
-      tempSheet.setFrozenRows(1);
-      tempSheet.getRange(1, 1, 1, cols).setFontWeight('bold');
-      tempSheet.autoResizeColumns(1, cols);
-      if (rows > 1) {
-        tempSheet.getRange(1, 1, rows, cols).createFilter();
-      }
-    }
-
-    SpreadsheetApp.flush();
-
-    // Không dùng UrlFetchApp ở đây. Web App không cần scope
-    // https://www.googleapis.com/auth/script.external_request.
-    // DriveApp.getFileById(...).getAs(MimeType.MICROSOFT_EXCEL)
-    // yêu cầu quyền Drive thông thường và trả về XLSX thật.
-    const blob = DriveApp.getFileById(tempId)
-      .getAs(MimeType.MICROSOFT_EXCEL)
-      .setName(
-        'Responses_Export_' +
-        Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') +
-        '.xlsx'
-      );
-
-    return json_({
-      ok: true,
-      fileName: blob.getName(),
-      fileData: Utilities.base64Encode(blob.getBytes()),
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    });
-  } catch (err) {
-    console.error(err);
-    return json_({
-      ok: false,
-      error: 'EXPORT_FAILED',
-      message: 'Lỗi tạo file Excel: ' + safeMessage_(err)
-    });
-  } finally {
-    // Xóa file Spreadsheet tạm kể cả khi export gặp lỗi.
-    if (tempId) {
-      try {
-        DriveApp.getFileById(tempId).setTrashed(true);
-      } catch (cleanupErr) {
-        console.error(cleanupErr);
-      }
-    }
-  }
+const session = requireAdminSession_(b.token);
+if (!session) {
+return json_({
+ok: false,
+error: 'UNAUTHORIZED',
+message: 'Phiên quản trị viên đã hết hạn.'
+});
 }
-
-
+let tempId = '';
+try {
+const source = getSheet_(CONFIG.RESPONSE_SHEET);
+const data = source.getDataRange().getDisplayValues();
+if (!data || data.length < 1) {
+throw new Error('Không có dữ liệu trong sheet Responses.');
+}
+const tempSs = SpreadsheetApp.create('TEMP_EXPORT_' + Utilities.getUuid());
+tempId = tempSs.getId();
+const tempSheet = tempSs.getSheets()[0];
+tempSheet.setName('Responses');
+const rows = data.length;
+const cols = data[0].length;
+if (rows > 0 && cols > 0) {
+tempSheet.getRange(1, 1, rows, cols).setValues(data);
+tempSheet.setFrozenRows(1);
+tempSheet.getRange(1, 1, 1, cols).setFontWeight('bold');
+tempSheet.autoResizeColumns(1, cols);
+if (rows > 1) {
+tempSheet.getRange(1, 1, rows, cols).createFilter();
+}
+}
+SpreadsheetApp.flush();
+const blob = DriveApp.getFileById(tempId)
+.getAs(MimeType.MICROSOFT_EXCEL)
+.setName(
+'Responses_Export_' +
+Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') +
+'.xlsx'
+);
+return json_({
+ok: true,
+fileName: blob.getName(),
+fileData: Utilities.base64Encode(blob.getBytes()),
+mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+});
+} catch (err) {
+console.error(err);
+return json_({
+ok: false,
+error: 'EXPORT_FAILED',
+message: 'Lỗi tạo file Excel: ' + safeMessage_(err)
+});
+} finally {
+if (tempId) {
+try {
+DriveApp.getFileById(tempId).setTrashed(true);
+} catch (cleanupErr) {
+console.error(cleanupErr);
+}
+}
+}
+}
 function adminChangePassword_(b) {
 const session = requireAdminSession_(b.token);
 if (!session) return json_({ ok: false, error: 'UNAUTHORIZED' });
@@ -532,7 +512,7 @@ const rows = sh.getRange(2, 1, lastRow - 1, 6).getValues();
 for (let i = 0; i < rows.length; i++) {
 const r = rows[i];
 if (String(r[0] || '').trim() === username) {
-return { row: i + 2, username: username, hash: String(r[1] || ''), salt: String(r[2] || ''), active: r[3], createdAt: r[4], updatedAt: r[5] };
+return { row: i + 2, username: username, hash: String(r[1] || ''), salt: String(r[2] || ''), active: r, createdAt: r, updatedAt: r[5] };
 }
 }
 return null;
@@ -555,10 +535,10 @@ const maNV = String(r[h.MaNV] || '').trim();
 const hoTen = String(r[h.HoTen] || '').trim();
 const cccd = normalizeCCCD_(r[h.CCCD]);
 if (maNV || hoTen || cccd) {
-list.push({ _row: i + 1, MaNV: maNV, HoTen: hoTen, CCCD: cccd });
+list.push({ row: i + 1, MaNV: maNV, HoTen: hoTen, CCCD: cccd });
 }
 }
-cachePutJson_('employees:v2', list, CONFIG.EMPLOYEE_CACHE_SECONDS);
+cachePutJson('employees:v2', list, CONFIG.EMPLOYEE_CACHE_SECONDS);
 return list;
 }
 function getResponseObjects_(ss) {
@@ -579,14 +559,14 @@ if (headers.indexOf(required[i]) < 0) throw new Error('Sheet Responses thieu cot
 const list = [];
 for (let i = 1; i < rows.length; i++) {
 const row = rows[i];
-const o = { _row: i + 1 };
+const o = { row: i + 1 };
 for (let j = 0; j < headers.length; j++) {
 if (headers[j]) o[headers[j]] = row[j];
 }
 list.push(o);
 }
 const filtered = list.filter(function(o) { return String(o.MaNV || '').trim() !== ''; });
-cachePutJson_('responses:v3', filtered, CONFIG.RESPONSE_CACHE_SECONDS);
+cachePutJson('responses:v3', filtered, CONFIG.RESPONSE_CACHE_SECONDS);
 return filtered;
 }
 function findLatestResponseByMaNV_(maNV) {
@@ -615,7 +595,6 @@ if (lastCol < 1) throw new Error('Sheet Responses chua co cot.');
 const headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
 const base = Object.create(null);
 for (let i = 0; i < headers.length; i++) { base[headers[i]] = ''; }
-// SỬA ĐỊNH DẠNG: Ép ghi hẳn chuỗi text ngày tháng tường minh dd/MM/yyyy HH:mm:ss vào cả 2 cột thời gian
 base.Timestamp = existing && existing.Timestamp ? formatDate_(existing.Timestamp) : formatDate_(new Date());
 base.SubmissionId = existing && existing.SubmissionId ? existing.SubmissionId : Utilities.getUuid();
 base.MaNV = session.maNV;
@@ -632,11 +611,11 @@ base[k] = patch[k];
 }
 const row = headers.map(function(h) { return base[h] === undefined ? '' : base[h]; });
 if (existing && existing._row) {
-sh.getRange(existing._row, 1, 1, headers.length).setValues([row]);
+sh.getRange(existing.row, 1, 1, headers.length).setValues([row]);
 } else {
 sh.getRange(sh.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
 }
-clearDataCaches_();
+clearDataCaches();
 } finally {
 lock.releaseLock();
 }
@@ -727,7 +706,7 @@ if (h[k] === undefined) throw new Error('Sheet DSCNV thieu cot bat buoc: ' + k);
 return h;
 }
 function normalizeCCCD_(v) { return String(v == null ? '' : v).trim().replace(/[^\d]/g, '').slice(0, CONFIG.MAX_CCCD_LENGTH); }
-function maskCCCD_(v) { const s = normalizeCCCD_(v); if (!s) return ''; if (s.length <= 4) return '*'.repeat(s.length); return '*'.repeat(s.length - 4) + s.slice(-4); }
+function maskCCCD_(v) { const s = normalizeCCCD_(v); if (!s) return ''; if (s.length <= 4) return ''.repeat(s.length); return ''.repeat(s.length - 4) + s.slice(-4); }
 function clean_(v, maxLen) { const n = maxLen || CONFIG.MAX_TEXT; return String(v == null ? '' : v).trim().slice(0, n); }
 function sanitizeResponse_(r) {
 if (!r) return null;

@@ -406,39 +406,171 @@ return json_({ ok: true, message: 'Cập nhật thời hạn đóng liên kết 
 }
 // HÀM XUẤT FILE MỚI: Đọc mảng trực tiếp từ Sheet Responses chuyển sang chuỗi văn bản dữ liệu an toàn để tránh lỗi UrlFetch
 function adminDownloadExcel_(b) {
-const session = requireAdminSession_(b.token);
-if (!session) return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Phiên quản trị viên đã hết hạn.' });
-try {
-const sheet = getSheet_(CONFIG.RESPONSE_SHEET);
-const data = sheet.getDataRange().getDisplayValues(); // Đọc dạng chuỗi hiển thị đã định dạng sẵn trên sheet
-if (data.length === 0) throw new Error('Không có dữ liệu trong sheet phản hồi.');
-// Xây dựng chuỗi văn bản bảng dữ liệu thô (TSV) để tải về trình duyệt tự biên dịch thành tập tin Excel sạch
-const tsvLines = [];
-for (let i = 0; i < data.length; i++) {
-const escapedRow = data[i].map(function(cell) {
-let str = String(cell || '');
-if (str.indexOf('"') >= 0 || str.indexOf('\n') >= 0 || str.indexOf('\t') >= 0) {
-str = '"' + str.replace(/"/g, '""') + '"';
+  const session = requireAdminSession_(b.token);
+  if (!session) {
+    return json_({
+      ok: false,
+      error: 'UNAUTHORIZED',
+      message: 'Phiên quản trị viên đã hết hạn.'
+    });
+  }
+
+  try {
+    const sheet = getSheet_(CONFIG.RESPONSE_SHEET);
+    const data = sheet.getDataRange().getDisplayValues();
+
+    if (!data.length) {
+      throw new Error('Không có dữ liệu trong sheet Responses.');
+    }
+
+    // Tạo file XLSX thật, thay vì ghi TSV nhưng đặt đuôi .xls.
+    // Cách này loại bỏ cảnh báo "file format and extension don't match" của Excel.
+    const xlsxBlob = buildXlsxBlob_(data, 'Responses');
+    const fileName = 'Responses_Export_' +
+      Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') +
+      '.xlsx';
+
+    return json_({
+      ok: true,
+      fileName: fileName,
+      fileData: Utilities.base64Encode(xlsxBlob.getBytes()),
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+  } catch (err) {
+    console.error(err);
+    return json_({
+      ok: false,
+      error: 'EXPORT_FAILED',
+      message: 'Lỗi tạo file Excel: ' + safeMessage_(err)
+    });
+  }
 }
-return str;
-});
-tsvLines.push(escapedRow.join('\t'));
+
+/**
+ * Tạo một workbook XLSX tối giản nhưng hợp lệ bằng Utilities.zip().
+ * Dữ liệu được ghi dưới dạng inline string để không cần sharedStrings.xml.
+ */
+function buildXlsxBlob_(rows, sheetName) {
+  const safeSheetName = cleanXmlText_(sheetName || 'Responses').slice(0, 31) || 'Responses';
+  const sheetRows = [];
+  const maxCols = rows.reduce(function(max, row) {
+    return Math.max(max, row.length);
+  }, 0);
+
+  for (let r = 0; r < rows.length; r++) {
+    const cells = [];
+    const row = rows[r] || [];
+
+    for (let c = 0; c < maxCols; c++) {
+      const value = row[c] == null ? '' : String(row[c]);
+      if (!value) continue;
+
+      const ref = columnName_(c + 1) + (r + 1);
+      cells.push(
+        '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' +
+        escapeXml_(value) +
+        '</t></is></c>'
+      );
+    }
+
+    sheetRows.push('<row r="' + (r + 1) + '">' + cells.join('') + '</row>');
+  }
+
+  const dimension = 'A1:' + columnName_(Math.max(maxCols, 1)) + Math.max(rows.length, 1);
+
+  const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+    '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+    '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
+    '</Types>';
+
+  const rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+    '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>' +
+    '</Relationships>';
+
+  const workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<sheets><sheet name="' + escapeXml_(safeSheetName) + '" sheetId="1" r:id="rId1"/></sheets>' +
+    '</workbook>';
+
+  const workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+    '</Relationships>';
+
+  const worksheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<dimension ref="' + dimension + '"/>' +
+    '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+    '<sheetData>' + sheetRows.join('') + '</sheetData>' +
+    '<autoFilter ref="' + dimension + '"/>' +
+    '</worksheet>';
+
+  const now = new Date().toISOString();
+  const core = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ' +
+    'xmlns:dc="http://purl.org/dc/elements/1.1/" ' +
+    'xmlns:dcterms="http://purl.org/dc/terms/" ' +
+    'xmlns:dcmitype="http://purl.org/dc/dcmitype/" ' +
+    'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+    '<dc:creator>Google Apps Script</dc:creator>' +
+    '<dcterms:created xsi:type="dcterms:W3CDTF">' + now + '</dcterms:created>' +
+    '<dcterms:modified xsi:type="dcterms:W3CDTF">' + now + '</dcterms:modified>' +
+    '</cp:coreProperties>';
+
+  const app = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" ' +
+    'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
+    '<Application>Google Apps Script</Application>' +
+    '<DocSecurity>0</DocSecurity><ScaleCrop>false</ScaleCrop>' +
+    '</Properties>';
+
+  const files = [
+    Utilities.newBlob(contentTypes, 'application/xml', '[Content_Types].xml'),
+    Utilities.newBlob(rootRels, 'application/xml', '_rels/.rels'),
+    Utilities.newBlob(workbook, 'application/xml', 'xl/workbook.xml'),
+    Utilities.newBlob(workbookRels, 'application/xml', 'xl/_rels/workbook.xml.rels'),
+    Utilities.newBlob(worksheet, 'application/xml', 'xl/worksheets/sheet1.xml'),
+    Utilities.newBlob(core, 'application/xml', 'docProps/core.xml'),
+    Utilities.newBlob(app, 'application/xml', 'docProps/app.xml')
+  ];
+
+  return Utilities.zip(files, 'Responses.xlsx');
 }
-const textContent = tsvLines.join('\r\n');
-// Mã hóa Base64 chuỗi ký tự UTF-8 kèm mã đánh dấu BOM (Byte Order Mark) giúp tránh lỗi font tiếng Việt khi mở bằng Excel
-const bomAndContent = '\uFEFF' + textContent;
-const base64Data = Utilities.base64Encode(bomAndContent, Utilities.Charset.UTF_8);
-const fileName = 'Responses_Export_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.xls';
-return json_({
-ok: true,
-fileName: fileName,
-fileData: base64Data,
-mimeType: 'application/vnd.ms-excel'
-});
-} catch (err) {
-return json_({ ok: false, error: 'EXPORT_FAILED', message: 'Lỗi tạo dữ liệu: ' + err.message });
+
+function columnName_(number) {
+  let n = Number(number);
+  let name = '';
+  while (n > 0) {
+    const remainder = (n - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    n = Math.floor((n - 1) / 26);
+  }
+  return name || 'A';
 }
+
+function cleanXmlText_(value) {
+  return String(value == null ? '' : value).replace(/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]/g, '');
 }
+
+function escapeXml_(value) {
+  return cleanXmlText_(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 function adminChangePassword_(b) {
 const session = requireAdminSession_(b.token);
 if (!session) return json_({ ok: false, error: 'UNAUTHORIZED' });
@@ -582,7 +714,7 @@ base[k] = patch[k];
 }
 const row = headers.map(function(h) { return base[h] === undefined ? '' : base[h]; });
 if (existing && existing._row) {
-sh.getRange(existing.row, 1, 1, headers.length).setValues([row]);
+sh.getRange(existing._row, 1, 1, headers.length).setValues([row]);
 } else {
 sh.getRange(sh.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
 }

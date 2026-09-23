@@ -434,7 +434,7 @@ th{background:#f8fafc;position:sticky;top:0}
             <input type="datetime-local" id="inputDeadline" class="form-control mr-2" style="max-width: 240px;">
             <button id="btnSaveDeadline" type="button" class="btn btn-primary btn-sm px-3">Lưu cài đặt</button>
             <button id="btnRefresh" type="button" class="btn btn-secondary btn-sm">Làm mới</button>
-            <button id="btnDownloadExcel" type="button" class="btn btn-success btn-sm">💾 Xuất Dữ Liệu Excel</button>
+            <button id="btnDownloadExcel" type="button" class="btn btn-success btn-sm">💾 Xuất Excel (.xlsx)</button>
           </div>
         </div>
       </div>
@@ -1296,7 +1296,7 @@ async function downloadExcel() {
     alert(err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = '💾 Xuất Dữ Liệu Excel';
+    btn.textContent = '💾 Xuất Excel (.xlsx)';
   }
 }
 

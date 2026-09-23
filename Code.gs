@@ -16,8 +16,8 @@ const MIEN_GIAM_ALLOWED_ = [
  * SHEET:
  *  - DSCNV: MaNV | HoTen | CCCD
  *  - Responses: Timestamp | SubmissionId | MaNV | HoTen | CCCD | Consent |
- *    NgaySinh | GioiTinh | DanToc | TonGiao | DiaChiThuongTru |
- *    TrinhDoChuyenMon | MienGiam | Status | UpdatedAt
+ *    NgaySinh | GioiTinh | DanToc | TonGiao | DiaChiThuongTru | DiaChiTamTru |
+ *    TrinhDoHocVan | TrinhDoChuyenMon |MienGiam | Status | UpdatedAt
  *  - AdminUsers: Username | PasswordHash | PasswordSalt | Active | CreatedAt | UpdatedAt
  *
  * SCRIPT PROPERTIES:
@@ -50,8 +50,8 @@ function setup() {
   ensureSheet_(ss, CONFIG.EMPLOYEE_SHEET, ['MaNV', 'HoTen', 'CCCD']);
   ensureSheet_(ss, CONFIG.RESPONSE_SHEET, [
     'Timestamp', 'SubmissionId', 'MaNV', 'HoTen', 'CCCD', 'Consent',
-    'NgaySinh', 'GioiTinh', 'DanToc', 'TonGiao', 'DiaChiThuongTru',
-    'TrinhDoChuyenMon', 'MienGiam', 'Status', 'UpdatedAt'
+    'NgaySinh', 'GioiTinh', 'DanToc', 'TonGiao', 'DiaChiThuongTru', 'DiaChiTamTru',
+    'TrinhDoHocVan', 'TrinhDoChuyenMon', 'MienGiam', 'Status', 'UpdatedAt'
   ]);
   ensureSheet_(ss, CONFIG.ADMIN_SHEET, [
     'Username', 'PasswordHash', 'PasswordSalt', 'Active', 'CreatedAt', 'UpdatedAt'
@@ -231,6 +231,8 @@ function submitForm_(b) {
     danToc: clean_(b.danToc),
     tonGiao: clean_(b.tonGiao),
     diaChiThuongTru: clean_(b.diaChiThuongTru),
+    diaChiTamTru: clean_(b.diaChiTamTru),
+    trinhDoHocVan: clean_(b.trinhDoHocVan),
     trinhDoChuyenMon: clean_(b.trinhDoChuyenMon),
     mienGiam: normalizeMienGiam_(b.mienGiam)
   };
@@ -272,6 +274,8 @@ function submitForm_(b) {
     DanToc: fields.danToc,
     TonGiao: fields.tonGiao,
     DiaChiThuongTru: fields.diaChiThuongTru,
+    DiaChiTamTru: fields.diaChiTamTru,
+    TrinhDoHocVan: fields.trinhDoHocvan,
     TrinhDoChuyenMon: fields.trinhDoChuyenMon,
     MienGiam: fields.mienGiam,
     Status: 'Da hoan tat',
@@ -831,6 +835,8 @@ function sanitizeResponse_(r) {
     DanToc: String(r.DanToc || ''),
     TonGiao: String(r.TonGiao || ''),
     DiaChiThuongTru: String(r.DiaChiThuongTru || ''),
+    DiaChiTamTru: String(r.DiaChiTamTru || ''),
+    TrinhDoHocVan: String(r.TrinhDoHocVan || ''),
     TrinhDoChuyenMon: String(r.TrinhDoChuyenMon || ''),
     MienGiam: String(r.MienGiam || ''),
     Status: String(r.Status || ''),

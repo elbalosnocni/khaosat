@@ -1202,7 +1202,7 @@ document.getElementById('btnDownloadExcel').addEventListener('click', function()
   this.innerText = 'Đang tải...';
   this.disabled = true;
 
-  fetch('URL_WEB_APP_CUA_BAN', {
+  fetch('https://script.google.com/macros/s/AKfycbxhngXz5IXZ-Oge8Ro3pkSCs4uzssxQGUbZX5kX4AjUl1fFIj2qWRw7QZRxez8eNrpV/exec', {
     method: 'POST',
     body: JSON.stringify({
       action: 'adminDownloadExcel',

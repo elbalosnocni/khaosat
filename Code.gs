@@ -1,4 +1,3 @@
-
 const MIEN_GIAM_ALLOWED_ = [
   'Không thuộc trường hợp miễn/giảm','Trẻ em','Người cao tuổi','Người khuyết tật',
   'Hộ nghèo/cận nghèo','Cư trú tại xã đặc biệt khó khăn',
@@ -9,20 +8,9 @@ const MIEN_GIAM_ALLOWED_ = [
 ];
 
 /**
- * HE THONG THU THAP DU LIEU LY LICH TU PHAP
- * Google Apps Script Backend
- * Phien ban toi uu: 22/09/2026
- *
- * SHEET:
- *  - DSCNV: MaNV | HoTen | CCCD
- *  - Responses: Timestamp | SubmissionId | MaNV | HoTen | CCCD | Consent |
- *    NgaySinh | GioiTinh | DanToc | TonGiao | DiaChiThuongTru | DiaChiTamTru |
- *    TrinhDoHocVan | TrinhDoChuyenMon |MienGiam | Status | UpdatedAt
- *  - AdminUsers: Username | PasswordHash | PasswordSalt | Active | CreatedAt | UpdatedAt
- *
- * SCRIPT PROPERTIES:
- *  - SPREADSHEET_ID: ID cua Google Spreadsheet
- *  - PASSWORD_PEPPER: tu dong tao boi setup() neu chua co
+ * HỆ THỐNG THU THẬP DỮ LIỆU LÝ LỊCH TƯ PHÁP
+ * Google Apps Script Backend - Phiên bản Tối ưu hóa Toàn diện
+ * Cập nhật: 23/09/2026
  */
 
 const CONFIG = Object.freeze({
@@ -30,11 +18,11 @@ const CONFIG = Object.freeze({
   RESPONSE_SHEET: 'Responses',
   ADMIN_SHEET: 'AdminUsers',
 
-  // CacheService cua Apps Script gioi han thoi gian luu cache.
   SESSION_SECONDS: 6 * 60 * 60,
 
   PEPPER_PROPERTY: 'PASSWORD_PEPPER',
   SPREADSHEET_PROPERTY: 'SPREADSHEET_ID',
+  DEADLINE_PROPERTY: 'SYSTEM_DEADLINE', // Lưu trữ thời hạn đóng link
 
   MAX_TEXT: 2000,
   MAX_CCCD_LENGTH: 12,
@@ -61,6 +49,11 @@ function setup() {
   if (!props.getProperty(CONFIG.PEPPER_PROPERTY)) {
     props.setProperty(CONFIG.PEPPER_PROPERTY, randomHex_(64));
   }
+  
+  // Đặt cấu hình thời hạn mặc định nếu chưa có (Định dạng: YYYY-MM-DDTHH:mm)
+  if (!props.getProperty(CONFIG.DEADLINE_PROPERTY)) {
+    props.setProperty(CONFIG.DEADLINE_PROPERTY, '2026-12-31T23:59');
+  }
 
   const admin = getSheet_(CONFIG.ADMIN_SHEET);
   if (admin.getLastRow() <= 1) {
@@ -71,17 +64,20 @@ function setup() {
   }
 
   clearDataCaches_();
-  return 'Setup completed.';
+  return 'Setup completed successfully.';
 }
 
-/* ========================= HTTP ========================= */
+/* ========================= HTTP INTERFACES ========================= */
 
 function doGet() {
+  const deadlineStr = PropertiesService.getScriptProperties().getProperty(CONFIG.DEADLINE_PROPERTY) || '';
   return json_({
     ok: true,
     service: 'ly-lich-tu-phap-api',
-    version: '2.0',
-    time: new Date().toISOString()
+    version: '3.0',
+    time: new Date().toISOString(),
+    deadline: deadlineStr,
+    isExpired: isLinkExpired_()
   });
 }
 
@@ -89,6 +85,17 @@ function doPost(e) {
   try {
     const body = parseRequest_(e);
     const action = String(body.action || '').trim();
+
+    // Loại trừ các hành động của Admin ra khỏi kiểm tra đóng link, để Admin luôn luôn vào cấu hình lại ngày được
+    const isAdminAction = ['adminLogin', 'adminDashboard', 'adminChangePassword', 'adminLogout', 'adminDownloadExcel', 'adminSetDeadline'].indexOf(action) >= 0;
+
+    if (!isAdminAction && isLinkExpired_()) {
+      return json_({
+        ok: false,
+        error: 'LINK_EXPIRED',
+        message: 'Hệ thống đã khóa! Biểu mẫu thu thập thông tin lý lịch tư pháp đã hết thời hạn quy định.'
+      });
+    }
 
     switch (action) {
       case 'employeeLogin': return employeeLogin_(body);
@@ -100,6 +107,8 @@ function doPost(e) {
       case 'adminDashboard': return adminDashboard_(body);
       case 'adminChangePassword': return adminChangePassword_(body);
       case 'adminLogout': return adminLogout_(body);
+      case 'adminDownloadExcel': return adminDownloadExcel_(body);
+      case 'adminSetDeadline': return adminSetDeadline_(body); // Chức năng thay đổi hạn chót mới
 
       default:
         return json_({ ok: false, error: 'INVALID_ACTION', message: 'Yeu cau khong hop le.' });
@@ -123,7 +132,19 @@ function parseRequest_(e) {
   }
 }
 
-/* ========================= EMPLOYEE ========================= */
+/* ========================= KIỂM TRA HẾT HẠN ========================= */
+
+function isLinkExpired_() {
+  const deadlineStr = PropertiesService.getScriptProperties().getProperty(CONFIG.DEADLINE_PROPERTY);
+  if (!deadlineStr) return false;
+  
+  const deadlineDate = new Date(deadlineStr);
+  if (isNaN(deadlineDate.getTime())) return false;
+  
+  return Date.now() > deadlineDate.getTime();
+}
+
+/* ========================= EMPLOYEE LOGIC ========================= */
 
 function employeeLogin_(b) {
   const cccd = normalizeCCCD_(b.cccd);
@@ -199,7 +220,6 @@ function saveConsent_(b) {
   return json_({ ok: true, next: 'form' });
 }
 
-
 function normalizeMienGiam_(value) {
   const raw = clean_(value);
   if (!raw) return '';
@@ -237,8 +257,6 @@ function submitForm_(b) {
     mienGiam: normalizeMienGiam_(b.mienGiam)
   };
 
-  // Truong bat buoc: ngay sinh va dia chi thuong tru.
-  // Dan toc va ton giao co the de trong khi chua co du lieu.
   const required = [
     ['ngaySinh', 'Ngay, thang, nam sinh'],
     ['diaChiThuongTru', 'Dia chi thuong tru']
@@ -303,598 +321,385 @@ function getMySubmission_(b) {
   });
 }
 
-/* ========================= ADMIN ========================= */
+/* ========================= ADMIN LOGIC ========================= */
 
 function adminLogin_(b) {
   const username = clean_(b.username, 100);
   const password = String(b.password || '');
 
   if (!username || !password) {
-    return json_({
-      ok: false,
-      error: 'INVALID_LOGIN',
-      message: 'Vui long nhap day du tai khoan va mat khau.'
-    });
+    return json_({ ok: false, error: 'INVALID_LOGIN', message: 'Vui long nhap day du tai khoan va mat khau.' });
   }
 
   const admin = findAdmin_(username);
   if (!admin || !isActive_(admin.active)) {
-    return json_({
-      ok: false,
-      error: 'INVALID_LOGIN',
-      message: 'Tai khoan hoac mat khau khong dung.'
-    });
+    return json_({ ok: false, error: 'INVALID_LOGIN', message: 'Tai khoan hoac mat khau khong dung.' });
   }
 
   const hash = hashPassword_(password, admin.salt);
   if (!secureEqual_(hash, admin.hash)) {
-    return json_({
-      ok: false,
-      error: 'INVALID_LOGIN',
-      message: 'Tai khoan hoac mat khau khong dung.'
-    });
-  }
-
-  const token = createSession_('admin', { username: username });
-
-  return json_({ ok: true, token: token });
+return json_({ ok: false, error: 'INVALID_LOGIN', message: 'Tai khoan hoac mat khau khong dung.' });
 }
-
+const token = createSession_('admin', { username: username });
+return json_({ ok: true, token: token });
+}
 function adminDashboard_(b) {
-  const session = requireAdminSession_(b.token);
-  if (!session) {
-    return json_({
-      ok: false,
-      error: 'UNAUTHORIZED',
-      message: 'Phien admin da het han. Vui long dang nhap lai.'
-    });
-  }
-
-  const ss = getSS_();
-
-  // Doc moi sheet mot lan.
-  const employees = getEmployeeObjects_(ss);
-  const responses = getResponseObjects_(ss);
-
-  const latest = Object.create(null);
-
-  for (let i = 0; i < responses.length; i++) {
-    const r = responses[i];
-    const key = String(r.MaNV || '').trim();
-    if (!key) continue;
-
-    const currTime = dateMs_(r.UpdatedAt || r.Timestamp);
-    const oldTime = latest[key] ? dateMs_(latest[key].UpdatedAt || latest[key].Timestamp) : -1;
-
-    if (!latest[key] || currTime >= oldTime) {
-      latest[key] = r;
-    }
-  }
-
-  const summary = {
-    totalEmployees: employees.length,
-    completed: 0,
-    inProgress: 0,
-    refused: 0,
-    notStarted: 0
-  };
-
-  const list = new Array(employees.length);
-
-  for (let i = 0; i < employees.length; i++) {
-    const e = employees[i];
-    const r = latest[e.MaNV];
-    const status = r ? String(r.Status || 'Dang ke khai') : 'Chua dien';
-
-    if (status === 'Da hoan tat') summary.completed++;
-    else if (status === 'Dang ke khai') summary.inProgress++;
-    else if (status === 'Tu choi') summary.refused++;
-    else summary.notStarted++;
-
-    list[i] = {
-      maNV: e.MaNV,
-      hoTen: e.HoTen,
-      cccd: maskCCCD_(e.CCCD),
-      status: status,
-      consent: r ? String(r.Consent || '') : '',
-      updatedAt: r ? formatDate_(r.UpdatedAt || r.Timestamp) : ''
-    };
-  }
-
-  return json_({
-    ok: true,
-    summary: summary,
-    rows: list
-  });
+const session = requireAdminSession_(b.token);
+if (!session) {
+return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Phien admin da het han. Vui long dang nhap lai.' });
 }
-
+const ss = getSS_();
+const employees = getEmployeeObjects_(ss);
+const responses = getResponseObjects_(ss);
+const deadlineStr = PropertiesService.getScriptProperties().getProperty(CONFIG.DEADLINE_PROPERTY) || '';
+const latest = Object.create(null);
+for (let i = 0; i < responses.length; i++) {
+const r = responses[i];
+const key = String(r.MaNV || '').trim();
+if (!key) continue;
+const currTime = dateMs_(r.UpdatedAt || r.Timestamp);
+const oldTime = latest[key] ? dateMs_(latest[key].UpdatedAt || latest[key].Timestamp) : -1;
+if (!latest[key] || currTime >= oldTime) {
+latest[key] = r;
+}
+}
+const summary = { totalEmployees: employees.length, completed: 0, inProgress: 0, refused: 0, notStarted: 0 };
+const list = new Array(employees.length);
+for (let i = 0; i < employees.length; i++) {
+const e = employees[i];
+const r = latest[e.MaNV];
+const status = r ? String(r.Status || 'Dang ke khai') : 'Chua dien';
+if (status === 'Da hoan tat') summary.completed++;
+else if (status === 'Dang ke khai') summary.inProgress++;
+else if (status === 'Tu choi') summary.refused++;
+else summary.notStarted++;
+list[i] = {
+maNV: e.MaNV,
+hoTen: e.HoTen,
+cccd: maskCCCD_(e.CCCD),
+status: status,
+consent: r ? String(r.Consent || '') : '',
+updatedAt: r ? formatDate_(r.UpdatedAt || r.Timestamp) : ''
+};
+}
+return json_({
+ok: true,
+summary: summary,
+rows: list,
+deadline: deadlineStr // Trả thời hạn hiện tại về màn hình quản lý
+});
+}
+function adminSetDeadline_(b) {
+const session = requireAdminSession_(b.token);
+if (!session) {
+return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Hết phiên làm việc.' });
+}
+const newDeadline = String(b.deadline || '').trim(); // Định dạng mong đợi: YYYY-MM-DDTHH:mm
+if (!newDeadline || isNaN(new Date(newDeadline).getTime())) {
+return json_({ ok: false, error: 'INVALID_FORMAT', message: 'Định dạng thời gian không đúng.' });
+}
+PropertiesService.getScriptProperties().setProperty(CONFIG.DEADLINE_PROPERTY, newDeadline);
+return json_({ ok: true, message: 'Đã cập nhật thời hạn đóng liên kết thành công!' });
+}
+function adminDownloadExcel_(b) {
+const session = requireAdminSession_(b.token);
+if (!session) {
+return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Phiên quản trị viên đã hết hạn.' });
+}
+try {
+const ss = getSS_();
+const sheetId = ss.getSheetByName(CONFIG.RESPONSE_SHEET).getSheetId();
+const url = ss.getUrl().replace(/edit$/, '') + 'export?format=xlsx&gid=' + sheetId;
+const response = UrlFetchApp.fetch(url, {
+headers: { 'Authorization': 'Bearer ' + ScriptApp.getOAuthToken() },
+muteHttpExceptions: true
+});
+if (response.getResponseCode() !== 200) {
+throw new Error('Google API từ chối xuất dữ liệu: ' + response.getContentText());
+}
+const base64Data = Utilities.base64Encode(response.getBlob().getBytes());
+const fileName = 'Responses_Export_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.xlsx';
+return json_({
+ok: true,
+fileName: fileName,
+fileData: base64Data,
+mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+});
+} catch (err) {
+return json_({ ok: false, error: 'EXPORT_FAILED', message: 'Lỗi xuất Excel: ' + err.message });
+}
+}
 function adminChangePassword_(b) {
-  const session = requireAdminSession_(b.token);
-  if (!session) {
-    return json_({ ok: false, error: 'UNAUTHORIZED' });
-  }
-
-  const oldPassword = String(b.oldPassword || '');
-  const newPassword = String(b.newPassword || '');
-  const confirm = String(b.confirmPassword || '');
-
-  if (newPassword.length < 10) {
-    return json_({
-      ok: false,
-      error: 'WEAK_PASSWORD',
-      message: 'Mat khau moi phai co it nhat 10 ky tu.'
-    });
-  }
-
-  if (newPassword !== confirm) {
-    return json_({
-      ok: false,
-      error: 'PASSWORD_MISMATCH',
-      message: 'Xac nhan mat khau khong khop.'
-    });
-  }
-
-  if (oldPassword === newPassword) {
-    return json_({
-      ok: false,
-      error: 'SAME_PASSWORD',
-      message: 'Mat khau moi phai khac mat khau hien tai.'
-    });
-  }
-
-  const admin = findAdmin_(session.username);
-  if (!admin || !secureEqual_(hashPassword_(oldPassword, admin.salt), admin.hash)) {
-    return json_({
-      ok: false,
-      error: 'INVALID_PASSWORD',
-      message: 'Mat khau hien tai khong dung.'
-    });
-  }
-
-  const newSalt = randomHex_(32);
-  const newHash = hashPassword_(newPassword, newSalt);
-  const sh = getSheet_(CONFIG.ADMIN_SHEET);
-
-  sh.getRange(admin.row, 2, 1, 2).setValues([[newHash, newSalt]]);
-  sh.getRange(admin.row, 6).setValue(new Date());
-
-  return json_({ ok: true, message: 'Da doi mat khau admin.' });
+const session = requireAdminSession_(b.token);
+if (!session) return json_({ ok: false, error: 'UNAUTHORIZED' });
+const oldPassword = String(b.oldPassword || '');
+const newPassword = String(b.newPassword || '');
+const confirm = String(b.confirmPassword || '');
+if (newPassword.length < 10) return json_({ ok: false, error: 'WEAK_PASSWORD', message: 'Mat khau moi phai co it nhat 10 ky tu.' });
+if (newPassword !== confirm) return json_({ ok: false, error: 'PASSWORD_MISMATCH', message: 'Xac nhan mat khau khong khop.' });
+if (oldPassword === newPassword) return json_({ ok: false, error: 'SAME_PASSWORD', message: 'Mat khau moi phai khac mat khau hien tai.' });
+const admin = findAdmin_(session.username);
+if (!admin || !secureEqual_(hashPassword_(oldPassword, admin.salt), admin.hash)) {
+return json_({ ok: false, error: 'INVALID_PASSWORD', message: 'Mat khau hien tai khong dung.' });
 }
-
+const newSalt = randomHex_(32);
+const newHash = hashPassword_(newPassword, newSalt);
+const sh = getSheet_(CONFIG.ADMIN_SHEET);
+sh.getRange(admin.row, 2, 1, 2).setValues([[newHash, newSalt]]);
+sh.getRange(admin.row, 6).setValue(new Date());
+return json_({ ok: true, message: 'Da doi mat khau admin.' });
+}
 function adminLogout_(b) {
-  destroySession_(b.token);
-  return json_({ ok: true });
+destroySession_(b.token);
+return json_({ ok: true });
 }
-
-/* ========================= SHEET DATA ========================= */
-
+/* ========================= SHEET DATA CORE ========================= */
 function findEmployeeByCCCD_(cccd) {
-  const employees = getEmployeeObjects_();
-  for (let i = 0; i < employees.length; i++) {
-    if (normalizeCCCD_(employees[i].CCCD) === cccd) {
-      return {
-        row: employees[i]._row,
-        maNV: employees[i].MaNV,
-        hoTen: employees[i].HoTen,
-        cccd: cccd
-      };
-    }
-  }
-  return null;
+const employees = getEmployeeObjects_();
+for (let i = 0; i < employees.length; i++) {
+const e = employees[i];
+if (normalizeCCCD_(e.CCCD) === cccd) {
+return { row: e._row, maNV: e.MaNV, hoTen: e.HoTen, cccd: cccd };
 }
-
+}
+return null;
+}
 function findAdmin_(username) {
-  const sh = getSheet_(CONFIG.ADMIN_SHEET);
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) return null;
-
-  const rows = sh.getRange(2, 1, lastRow - 1, 6).getValues();
-  for (let i = 0; i < rows.length; i++) {
-    if (String(rows[i][0] || '').trim() === username) {
-      return {
-        row: i + 2,
-        username: username,
-        hash: String(rows[i][1] || ''),
-        salt: String(rows[i][2] || ''),
-        active: rows[i][3],
-        createdAt: rows[i][4],
-        updatedAt: rows[i][5]
-      };
-    }
-  }
-  return null;
+const sh = getSheet_(CONFIG.ADMIN_SHEET);
+const lastRow = sh.getLastRow();
+if (lastRow < 2) return null;
+const rows = sh.getRange(2, 1, lastRow - 1, 6).getValues();
+for (let i = 0; i < rows.length; i++) {
+const r = rows[i];
+if (String(r[0] || '').trim() === username) {
+return { row: i + 2, username: username, hash: String(r[1] || ''), salt: String(r[2] || ''), active: r[3], createdAt: r[4], updatedAt: r[5] };
 }
-
+}
+return null;
+}
 function getEmployeeObjects_(ss) {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get('employees:v2');
-  if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch (err) {
-      // Cache loi thi doc lai sheet.
-    }
-  }
-
-  const sheet = ss ? ss.getSheetByName(CONFIG.EMPLOYEE_SHEET) : getSheet_(CONFIG.EMPLOYEE_SHEET);
-  if (!sheet) throw new Error('Khong tim thay sheet ' + CONFIG.EMPLOYEE_SHEET);
-
-  const rows = sheet.getDataRange().getDisplayValues();
-  if (rows.length < 2) return [];
-
-  const h = employeeHeaderMap_(rows[0]);
-  const list = [];
-
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    const maNV = String(r[h.MaNV] || '').trim();
-    const hoTen = String(r[h.HoTen] || '').trim();
-    const cccd = normalizeCCCD_(r[h.CCCD]);
-
-    if (maNV || hoTen || cccd) {
-      list.push({
-        _row: i + 1,
-        MaNV: maNV,
-        HoTen: hoTen,
-        CCCD: cccd
-      });
-    }
-  }
-
-  cachePutJson_('employees:v2', list, CONFIG.EMPLOYEE_CACHE_SECONDS);
-  return list;
+const cache = CacheService.getScriptCache();
+const cached = cache.get('employees:v2');
+if (cached) {
+try { return JSON.parse(cached); } catch (err) { }
 }
-
+const sheet = ss ? ss.getSheetByName(CONFIG.EMPLOYEE_SHEET) : getSheet_(CONFIG.EMPLOYEE_SHEET);
+if (!sheet) throw new Error('Khong tim thay sheet ' + CONFIG.EMPLOYEE_SHEET);
+const rows = sheet.getDataRange().getDisplayValues();
+if (rows.length < 2) return [];
+const h = employeeHeaderMap_(rows[0]);
+const list = [];
+for (let i = 1; i < rows.length; i++) {
+const r = rows[i];
+const maNV = String(r[h.MaNV] || '').trim();
+const hoTen = String(r[h.HoTen] || '').trim();
+const cccd = normalizeCCCD_(r[h.CCCD]);
+if (maNV || hoTen || cccd) {
+list.push({ _row: i + 1, MaNV: maNV, HoTen: hoTen, CCCD: cccd });
+}
+}
+cachePutJson_('employees:v2', list, CONFIG.EMPLOYEE_CACHE_SECONDS);
+return list;
+}
 function getResponseObjects_(ss) {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get('responses:v2');
-  if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch (err) {
-      // Cache loi thi doc lai sheet.
-    }
-  }
-
-  const sheet = ss ? ss.getSheetByName(CONFIG.RESPONSE_SHEET) : getSheet_(CONFIG.RESPONSE_SHEET);
-  if (!sheet) throw new Error('Khong tim thay sheet ' + CONFIG.RESPONSE_SHEET);
-
-  const rows = sheet.getDataRange().getValues();
-  if (rows.length < 2) return [];
-
-  const headers = rows[0].map(function(v) { return String(v || '').trim(); });
-  const required = ['MaNV', 'HoTen', 'CCCD'];
-  for (let i = 0; i < required.length; i++) {
-    if (headers.indexOf(required[i]) < 0) {
-      throw new Error('Sheet Responses thieu cot ' + required[i]);
-    }
-  }
-
-  const list = new Array(rows.length - 1);
-
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    const o = { _row: i + 1 };
-
-    for (let j = 0; j < headers.length; j++) {
-      if (headers[j]) o[headers[j]] = row[j];
-    }
-
-    list[i - 1] = o;
-  }
-
-  const filtered = list.filter(function(o) {
-    return String(o.MaNV || '').trim() !== '';
-  });
-
-  cachePutJson_('responses:v2', filtered, CONFIG.RESPONSE_CACHE_SECONDS);
-  return filtered;
+const cache = CacheService.getScriptCache();
+const cached = cache.get('responses:v2');
+if (cached) {
+try { return JSON.parse(cached); } catch (err) { }
 }
-
+const sheet = ss ? ss.getSheetByName(CONFIG.RESPONSE_SHEET) : getSheet_(CONFIG.RESPONSE_SHEET);
+if (!sheet) throw new Error('Khong tim thay sheet ' + CONFIG.RESPONSE_SHEET);
+const rows = sheet.getDataRange().getValues();
+if (rows.length < 2) return [];
+const headers = rows[0].map(function(v) { return String(v || '').trim(); });
+const required = ['MaNV', 'HoTen', 'CCCD'];
+for (let i = 0; i < required.length; i++) {
+if (headers.indexOf(required[i]) < 0) throw new Error('Sheet Responses thieu cot ' + required[i]);
+}
+const list = [];
+for (let i = 1; i < rows.length; i++) {
+const row = rows[i];
+const o = { _row: i + 1 };
+for (let j = 0; j < headers.length; j++) {
+if (headers[j]) o[headers[j]] = row[j];
+}
+list.push(o);
+}
+const filtered = list.filter(function(o) { return String(o.MaNV || '').trim() !== ''; });
+cachePutJson_('responses:v2', filtered, CONFIG.RESPONSE_CACHE_SECONDS);
+return filtered;
+}
 function findLatestResponseByMaNV_(maNV) {
-  const target = String(maNV || '').trim();
-  const responses = getResponseObjects_();
-  let latest = null;
-  let latestTime = -1;
-
-  for (let i = 0; i < responses.length; i++) {
-    const r = responses[i];
-    if (String(r.MaNV || '').trim() !== target) continue;
-
-    const t = dateMs_(r.UpdatedAt || r.Timestamp);
-    if (t >= latestTime) {
-      latest = r;
-      latestTime = t;
-    }
-  }
-
-  return latest;
+const target = String(maNV || '').trim();
+const responses = getResponseObjects_();
+let latest = null;
+let latestTime = -1;
+for (let i = 0; i < responses.length; i++) {
+const r = responses[i];
+if (String(r.MaNV || '').trim() !== target) continue;
+const t = dateMs_(r.UpdatedAt || r.Timestamp);
+if (t >= latestTime) {
+latest = r;
+latestTime = t;
 }
-
-/**
- * Ghi cap nhat vao dong hien tai neu da co SubmissionId/nhan vien.
- * Dung LockService de tranh 2 request dong thoi ghi cung mot nhan vien.
- */
+}
+return latest;
+}
 function upsertResponse_(session, patch, existing) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-
-  try {
-    const sh = getSheet_(CONFIG.RESPONSE_SHEET);
-    const lastCol = sh.getLastColumn();
-
-    if (lastCol < 1) throw new Error('Sheet Responses chua co cot.');
-
-    const headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
-    const base = Object.create(null);
-
-    for (let i = 0; i < headers.length; i++) {
-      base[headers[i]] = '';
-    }
-
-    base.Timestamp = existing && existing.Timestamp ? existing.Timestamp : new Date();
-    base.SubmissionId = existing && existing.SubmissionId
-      ? existing.SubmissionId
-      : Utilities.getUuid();
-
-    base.MaNV = session.maNV;
-    base.HoTen = session.hoTen;
-    base.CCCD = session.cccd;
-
-    const patchKeys = Object.keys(patch);
-    for (let i = 0; i < patchKeys.length; i++) {
-      base[patchKeys[i]] = patch[patchKeys[i]];
-    }
-
-    const row = headers.map(function(h) {
-      return base[h] === undefined ? '' : base[h];
-    });
-
-    if (existing && existing._row) {
-      sh.getRange(existing._row, 1, 1, headers.length).setValues([row]);
-    } else {
-      sh.getRange(sh.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
-    }
-
-    clearDataCaches_();
-  } finally {
-    lock.releaseLock();
-  }
+const lock = LockService.getScriptLock();
+lock.waitLock(15000);
+try {
+const sh = getSheet_(CONFIG.RESPONSE_SHEET);
+const lastCol = sh.getLastColumn();
+if (lastCol < 1) throw new Error('Sheet Responses chua co cot.');
+const headers = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
+const base = Object.create(null);
+for (let i = 0; i < headers.length; i++) { base[headers[i]] = ''; }
+// ĐỊNH DẠNG HOÀN TOÀN CỘT TIMESTAMP dạng chuỗi TEXT trực tiếp
+base.Timestamp = existing && existing.Timestamp ? formatDate_(existing.Timestamp) : formatDate_(new Date());
+base.SubmissionId = existing && existing.SubmissionId ? existing.SubmissionId : Utilities.getUuid();
+base.MaNV = session.maNV;
+base.HoTen = session.hoTen;
+base.CCCD = session.cccd;
+const patchKeys = Object.keys(patch);
+for (let i = 0; i < patchKeys.length; i++) {
+const k = patchKeys[i];
+if (patch[k] instanceof Date) {
+base[k] = formatDate_(patch[k]);
+} else {
+base[k] = patch[k];
 }
-
+}
+const row = headers.map(function(h) { return base[h] === undefined ? '' : base[h]; });
+if (existing && existing._row) {
+sh.getRange(existing.row, 1, 1, headers.length).setValues([row]);
+} else {
+sh.getRange(sh.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
+}
+clearDataCaches();
+} finally {
+lock.releaseLock();
+}
+}
 /* ========================= SESSION ========================= */
-
 function createSession_(type, payload) {
-  const token = Utilities.getUuid() + '-' + Utilities.getUuid();
-  const obj = {
-    type: type,
-    payload: payload,
-    expiresAt: Date.now() + CONFIG.SESSION_SECONDS * 1000
-  };
-
-  CacheService.getScriptCache().put(
-    'sess:' + token,
-    JSON.stringify(obj),
-    CONFIG.SESSION_SECONDS
-  );
-
-  return token;
+const token = Utilities.getUuid() + '-' + Utilities.getUuid();
+const obj = { type: type, payload: payload, expiresAt: Date.now() + CONFIG.SESSION_SECONDS * 1000 };
+CacheService.getScriptCache().put('sess:' + token, JSON.stringify(obj), CONFIG.SESSION_SECONDS);
+return token;
 }
-
 function getSession_(token) {
-  const t = String(token || '').trim();
-  if (!t) return null;
-
-  const raw = CacheService.getScriptCache().get('sess:' + t);
-  if (!raw) return null;
-
-  try {
-    const s = JSON.parse(raw);
-
-    if (!s.expiresAt || s.expiresAt < Date.now()) {
-      destroySession_(t);
-      return null;
-    }
-
-    return s;
-  } catch (err) {
-    destroySession_(t);
-    return null;
-  }
+const t = String(token || '').trim();
+if (!t) return null;
+const raw = CacheService.getScriptCache().get('sess:' + t);
+if (!raw) return null;
+try {
+const s = JSON.parse(raw);
+if (!s.expiresAt || s.expiresAt < Date.now()) {
+destroySession_(t);
+return null;
 }
-
+return s;
+} catch (err) {
+destroySession_(t);
+return null;
+}
+}
 function requireEmployeeSession_(token) {
-  const s = getSession_(token);
-  return s && s.type === 'employee' ? s.payload : null;
+const s = getSession_(token);
+return s && s.type === 'employee' ? s.payload : null;
 }
-
 function requireAdminSession_(token) {
-  const s = getSession_(token);
-  return s && s.type === 'admin' ? s.payload : null;
+const s = getSession_(token);
+return s && s.type === 'admin' ? s.payload : null;
 }
-
 function destroySession_(token) {
-  const t = String(token || '').trim();
-  if (t) CacheService.getScriptCache().remove('sess:' + t);
+const t = String(token || '').trim();
+if (t) CacheService.getScriptCache().remove('sess:' + t);
 }
-
 /* ========================= SECURITY ========================= */
-
 function hashPassword_(password, salt) {
-  const pepper = PropertiesService.getScriptProperties().getProperty(CONFIG.PEPPER_PROPERTY) || '';
-
-  return bytesToHex_(Utilities.computeDigest(
-    Utilities.DigestAlgorithm.SHA_256,
-    String(password) + ':' + String(salt) + ':' + pepper,
-    Utilities.Charset.UTF_8
-  ));
+const pepper = PropertiesService.getScriptProperties().getProperty(CONFIG.PEPPER_PROPERTY) || '';
+return bytesToHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(password) + ':' + String(salt) + ':' + pepper, Utilities.Charset.UTF_8));
 }
-
 function secureEqual_(a, b) {
-  a = String(a);
-  b = String(b);
-
-  if (a.length !== b.length) return false;
-
-  let x = 0;
-  for (let i = 0; i < a.length; i++) {
-    x |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return x === 0;
+a = String(a); b = String(b);
+if (a.length !== b.length) return false;
+let x = 0;
+for (let i = 0; i < a.length; i++) { x |= a.charCodeAt(i) ^ b.charCodeAt(i); }
+return x === 0;
 }
-
 function randomHex_(n) {
-  const raw = Utilities.getUuid() + ':' + Utilities.getUuid() + ':' + Date.now() + ':' + Math.random();
-  const digest = Utilities.computeDigest(
-    Utilities.DigestAlgorithm.SHA_256,
-    raw,
-    Utilities.Charset.UTF_8
-  );
-  return bytesToHex_(digest).slice(0, n);
+const raw = Utilities.getUuid() + ':' + Utilities.getUuid() + ':' + Date.now() + ':' + Math.random();
+return bytesToHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raw, Utilities.Charset.UTF_8)).slice(0, n);
 }
-
-function isActive_(v) {
-  return v === true || String(v).toLowerCase() === 'true' || String(v).toLowerCase() === 'yes';
-}
-
+function isActive_(v) { return v === true || String(v).toLowerCase() === 'true' || String(v).toLowerCase() === 'yes'; }
 /* ========================= HELPERS ========================= */
-
 function getSS_() {
-  const id = PropertiesService.getScriptProperties().getProperty(CONFIG.SPREADSHEET_PROPERTY);
-  if (!id) throw new Error('Chua cau hinh SPREADSHEET_ID trong Script Properties.');
-  return SpreadsheetApp.openById(id);
+const id = PropertiesService.getScriptProperties().getProperty(CONFIG.SPREADSHEET_PROPERTY);
+if (!id) throw new Error('Chua cau hinh SPREADSHEET_ID trong Script Properties.');
+return SpreadsheetApp.openById(id);
 }
-
 function getSheet_(name) {
-  const sh = getSS_().getSheetByName(name);
-  if (!sh) throw new Error('Khong tim thay sheet: ' + name);
-  return sh;
+const sh = getSS_().getSheetByName(name);
+if (!sh) throw new Error('Khong tim thay sheet: ' + name);
+return sh;
 }
-
 function ensureSheet_(ss, name, headers) {
-  let sh = ss.getSheetByName(name);
-
-  if (!sh) {
-    sh = ss.insertSheet(name);
-  }
-
-  if (sh.getLastRow() === 0) {
-    sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sh.setFrozenRows(1);
-  }
+let sh = ss.getSheetByName(name);
+if (!sh) sh = ss.insertSheet(name);
+if (sh.getLastRow() === 0) {
+sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+sh.setFrozenRows(1);
 }
-
+}
 function employeeHeaderMap_(headers) {
-  const h = {};
-  for (let i = 0; i < headers.length; i++) {
-    h[String(headers[i]).trim()] = i;
-  }
-
-  if (h['Mã NV'] !== undefined && h.MaNV === undefined) h.MaNV = h['Mã NV'];
-  if (h['Họ tên'] !== undefined && h.HoTen === undefined) h.HoTen = h['Họ tên'];
-  if (h['Họ và tên'] !== undefined && h.HoTen === undefined) h.HoTen = h['Họ và tên'];
-  if (h['Số CCCD'] !== undefined && h.CCCD === undefined) h.CCCD = h['Số CCCD'];
-  if (h['CCCD'] !== undefined && h.CCCD === undefined) h.CCCD = h['CCCD'];
-
-  ['MaNV', 'HoTen', 'CCCD'].forEach(function(k) {
-    if (h[k] === undefined) {
-      throw new Error('Sheet DSCNV thieu cot bat buoc: ' + k);
-    }
-  });
-
-  return h;
+const h = {};
+for (let i = 0; i < headers.length; i++) { h[String(headers[i]).trim()] = i; }
+if (h['Mã NV'] !== undefined && h.MaNV === undefined) h.MaNV = h['Mã NV'];
+if (h['Họ tên'] !== undefined && h.HoTen === undefined) h.HoTen = h['Họ tên'];
+if (h['Họ và tên'] !== undefined && h.HoTen === undefined) h.HoTen = h['Họ và tên'];
+if (h['Số CCCD'] !== undefined && h.CCCD === undefined) h.CCCD = h['Số CCCD'];
+if (h['CCCD'] !== undefined && h.CCCD === undefined) h.CCCD = h['CCCD'];
+['MaNV', 'HoTen', 'CCCD'].forEach(function(k) {
+if (h[k] === undefined) throw new Error('Sheet DSCNV thieu cot bat buoc: ' + k);
+});
+return h;
 }
-
-function normalizeCCCD_(v) {
-  return String(v == null ? '' : v)
-    .trim()
-    .replace(/[^\d]/g, '')
-    .slice(0, CONFIG.MAX_CCCD_LENGTH);
-}
-
-function maskCCCD_(v) {
-  const s = normalizeCCCD_(v);
-  if (s.length <= 4) return '***';
-  return '*'.repeat(s.length - 4) + s.slice(-4);
-}
-
-function clean_(v, maxLen) {
-  const n = maxLen || CONFIG.MAX_TEXT;
-  return String(v == null ? '' : v).trim().slice(0, n);
-}
-
+function normalizeCCCD_(v) { return String(v == null ? '' : v).trim().replace(/[^\d]/g, '').slice(0, CONFIG.MAX_CCCD_LENGTH); }
+function maskCCCD_(v) { const s = normalizeCCCD_(v); if (s.length <= 4) return '**'; return ''.repeat(s.length - 4) + s.slice(-4); }
+function clean_(v, maxLen) { const n = maxLen || CONFIG.MAX_TEXT; return String(v == null ? '' : v).trim().slice(0, n); }
 function sanitizeResponse_(r) {
-  if (!r) return null;
-
-  return {
-    MaNV: String(r.MaNV || ''),
-    HoTen: String(r.HoTen || ''),
-    Consent: String(r.Consent || ''),
-    NgaySinh: String(r.NgaySinh || ''),
-    GioiTinh: String(r.GioiTinh || ''),
-    DanToc: String(r.DanToc || ''),
-    TonGiao: String(r.TonGiao || ''),
-    DiaChiThuongTru: String(r.DiaChiThuongTru || ''),
-    DiaChiTamTru: String(r.DiaChiTamTru || ''),
-    TrinhDoHocVan: String(r.TrinhDoHocVan || ''),
-    TrinhDoChuyenMon: String(r.TrinhDoChuyenMon || ''),
-    MienGiam: String(r.MienGiam || ''),
-    Status: String(r.Status || ''),
-    UpdatedAt: formatDate_(r.UpdatedAt || r.Timestamp)
-  };
+if (!r) return null;
+return {
+MaNV: String(r.MaNV || ''), HoTen: String(r.HoTen || ''), Consent: String(r.Consent || ''),
+NgaySinh: String(r.NgaySinh || ''), GioiTinh: String(r.GioiTinh || ''), DanToc: String(r.DanToc || ''),
+TonGiao: String(r.TonGiao || ''), DiaChiThuongTru: String(r.DiaChiThuongTru || ''), DiaChiTamTru: String(r.DiaChiTamTru || ''),
+TrinhDoHocVan: String(r.TrinhDoHocVan || ''), TrinhDoChuyenMon: String(r.TrinhDoChuyenMon || ''),
+MienGiam: String(r.MienGiam || ''), Status: String(r.Status || ''), UpdatedAt: formatDate_(r.UpdatedAt || r.Timestamp)
+};
 }
-
 function formatDate_(v) {
-  if (!v) return '';
-
-  const d = v instanceof Date ? v : new Date(v);
-  if (isNaN(d.getTime())) return String(v);
-
-  return Utilities.formatDate(
-    d,
-    Session.getScriptTimeZone(),
-    'dd/MM/yyyy HH:mm:ss'
-  );
+if (!v) return '';
+const d = v instanceof Date ? v : new Date(v);
+if (isNaN(d.getTime())) return String(v);
+return Utilities.formatDate(d, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm:ss');
 }
-
 function dateMs_(v) {
-  if (!v) return 0;
-  const d = v instanceof Date ? v : new Date(v);
-  const t = d.getTime();
-  return isNaN(t) ? 0 : t;
+if (!v) return 0;
+const d = v instanceof Date ? v : new Date(v);
+const t = d.getTime();
+return isNaN(t) ? 0 : t;
 }
-
 function bytesToHex_(bytes) {
-  const hex = [];
-
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i];
-    hex.push(('0' + (b < 0 ? b + 256 : b).toString(16)).slice(-2));
-  }
-
-  return hex.join('');
+const hex = [];
+for (let i = 0; i < bytes.length; i++) {
+const b = bytes[i];
+hex.push(('0' + (b < 0 ? b + 256 : b).toString(16)).slice(-2));
 }
-
-function safeMessage_(e) {
-  return String(e && e.message ? e.message : e).slice(0, 500);
+return hex.join('');
 }
-
-function cachePutJson_(key, value, seconds) {
-  try {
-    CacheService.getScriptCache().put(key, JSON.stringify(value), seconds);
-  } catch (err) {
-    // Cache day thi khong duoc lam hong request.
-  }
-}
-
-function clearDataCaches_() {
-  const cache = CacheService.getScriptCache();
-  cache.remove('employees:v2');
-  cache.remove('responses:v2');
-}
-
-function json_(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+function safeMessage_(e) { return String(e && e.message ? e.message : e).slice(0, 500); }
+function cachePutJson_(key, value, seconds) { try { CacheService.getScriptCache().put(key, JSON.stringify(value), seconds); } catch (err) { } }
+function clearDataCaches_() { const cache = CacheService.getScriptCache(); cache.remove('employees:v2'); cache.remove('responses:v2'); }
+function json_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }

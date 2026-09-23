@@ -427,6 +427,15 @@ th{background:#f8fafc;position:sticky;top:0}
       <h2>Dashboard Admin</h2>
       <p>Theo dõi tình trạng kê khai của toàn bộ nhân viên.</p>
 
+      <div class="card p-3 mb-4 shadow-sm">
+        <div class="row align-items-center">
+          <!-- Phần thiết lập thời gian đóng link -->
+          <div class="col-md-6 d-flex align-items-center">
+            <label for="inputDeadline" class="form-label font-weight-bold mr-2 mb-0" style="white-space: nowrap;">Thời hạn đóng biểu mẫu:</label>
+            <input type="datetime-local" id="inputDeadline" class="form-control mr-2" style="max-width: 250px;">
+            <button id="btnSaveDeadline" class="btn btn-primary btn-sm">Lưu cấu hình</button>
+          </div>
+      
       <div class="actions">
         <button type="button" onclick="loadAdminDashboard()">Làm mới</button>
         <button id="btnDownloadExcel" class="btn btn-success">Xuất File Excel</button>
@@ -1195,42 +1204,91 @@ async function handleAdminChangePassword() {
   }
 }
 
-document.getElementById('btnDownloadExcel').addEventListener('click', function() {
-  const token = localStorage.getItem('adminToken'); // Thay thế bằng cách lấy token thực tế của bạn
-  
-  // Hiển thị trạng thái đang xử lý
-  this.innerText = 'Đang tải...';
-  this.disabled = true;
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxhngXz5IXZ-Oge8Ro3pkSCs4uzssxQGUbZX5kX4AjUl1fFIj2qWRw7QZRxez8eNrpV/exec'; // Hãy đổi thành URL Web App triển khai từ Apps Script
 
-  fetch('https://script.google.com/macros/s/AKfycbxhngXz5IXZ-Oge8Ro3pkSCs4uzssxQGUbZX5kX4AjUl1fFIj2qWRw7QZRxez8eNrpV/exec', {
+// 1. Khi tải trang Dashboard Admin lên, nạp thời gian hạn chót cũ vào ô Input
+function loadDashboardData() {
+  const token = localStorage.getItem('adminToken');
+  
+  fetch(SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'adminDashboard', token: token })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.ok) {
+      // Đổ dữ liệu thời gian đóng link lưu từ máy chủ vào ô nhập liệu
+      if(data.deadline) {
+         document.getElementById('inputDeadline').value = data.deadline;
+      }
+      // Đoạn mã render bảng danh sách nhân viên cũ của bạn...
+    }
+  });
+}
+
+// 2. Sự kiện lưu thời hạn mới từ giao diện Admin
+document.getElementById('btnSaveDeadline').addEventListener('click', function() {
+  const deadlineValue = document.getElementById('inputDeadline').value; // Dạng chuỗi YYYY-MM-DDTHH:mm
+  const token = localStorage.getItem('adminToken');
+  
+  if(!deadlineValue) return alert('Vui lòng chọn ngày giờ hợp lệ!');
+  
+  this.innerText = 'Đang lưu...';
+  
+  fetch(SCRIPT_URL, {
     method: 'POST',
     body: JSON.stringify({
-      action: 'adminDownloadExcel',
-      token: token
+      action: 'adminSetDeadline',
+      token: token,
+      deadline: deadlineValue
     })
   })
   .then(res => res.json())
   .then(data => {
-    this.innerText = 'Xuất File Excel';
-    this.disabled = false;
-    
-    if (data.ok) {
-      // Giải mã dữ liệu base64 nhận được từ Apps Script và kích hoạt tải xuống trình duyệt
-      const blob = b64toBlob(data.fileData, data.mimeType);
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = data.fileName;
-      link.click();
-      URL.revokeObjectURL(blobUrl);
+    this.innerText = 'Lưu cấu hình';
+    if(data.ok) {
+      alert('Đã cập nhật thời gian đóng liên kết mới thành công!');
     } else {
       alert('Lỗi: ' + data.message);
     }
+  });
+});
+
+// 3. Sự kiện tải file Excel từ Apps Script chuyển về máy
+document.getElementById('btnDownloadExcel').addEventListener('click', function() {
+  const token = localStorage.getItem('adminToken');
+  this.innerText = 'Đang trích xuất...';
+  this.disabled = true;
+
+  fetch(SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'adminDownloadExcel', token: token })
+  })
+  .then(res => res.json())
+  .then(data => {
+    this.innerText = '⬇️ Xuất File Excel';
+    this.disabled = false;
+    
+    if (data.ok) {
+      const byteCharacters = atob(data.fileData);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const blob = new Blob([new Uint8Array(byteNumbers)], { type: data.mimeType });
+      
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = data.fileName;
+      link.click();
+    } else {
+      alert('Không thể xuất file: ' + data.message);
+    }
   })
   .catch(err => {
-    this.innerText = 'Xuất File Excel';
+    this.innerText = '⬇️ Xuất File Excel';
     this.disabled = false;
-    alert('Không thể kết nối đến máy chủ.');
+    alert('Lỗi mạng, vui lòng thử lại.');
   });
 });
 

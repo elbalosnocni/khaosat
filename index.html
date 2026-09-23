@@ -429,13 +429,12 @@ th{background:#f8fafc;position:sticky;top:0}
 
       <div class="card p-3 mb-4 shadow-sm" style="background: #f8f9fa; border-radius: 8px;">
         <div class="row align-items-center">
-          <!-- Chọn thời gian đóng biểu mẫu -->
-          <div class="col-md-7 d-flex align-items-center">
+          <div class="col-md-7 d-flex align-items-center" style="gap: 8px; flex-wrap: wrap;">
             <label for="inputDeadline" class="font-weight-bold mr-2 mb-0" style="white-space: nowrap; color: #333;">Hạn chót đóng biểu mẫu:</label>
             <input type="datetime-local" id="inputDeadline" class="form-control mr-2" style="max-width: 240px;">
-            <button id="btnSaveDeadline" class="btn btn-primary btn-sm px-3">Lưu cài đặt</button>          
-            <button id="btnRefresh" class="btn btn-secondary btn-sm mr-1">Làm mới</button>
-            <button id="btnDownloadExcel" class="btn btn-success btn-sm">💾 Xuất Dữ Liệu Excel</button>
+            <button id="btnSaveDeadline" type="button" class="btn btn-primary btn-sm px-3">Lưu cài đặt</button>
+            <button id="btnRefresh" type="button" class="btn btn-secondary btn-sm">Làm mới</button>
+            <button id="btnDownloadExcel" type="button" class="btn btn-success btn-sm">💾 Xuất Dữ Liệu Excel</button>
           </div>
         </div>
       </div>
@@ -761,9 +760,8 @@ function setLoading(loading, text) {
 
   if (text) $('loadingText').innerHTML = '<strong>' + escapeHtml(text) + '</strong>';
 
-  document.querySelectorAll('button').forEach(function(btn) {
-    btn.disabled = loading;
-  });
+  // Không khóa toàn bộ nút của trang. Các thao tác riêng (lưu, xuất Excel...)
+  // tự quản lý trạng thái disabled để tránh làm UI bị kẹt khi một request lỗi.
 }
 
 function escapeHtml(value) {
@@ -1088,6 +1086,13 @@ async function loadAdminDashboard() {
     }
 
     state.adminRows = Array.isArray(data.rows) ? data.rows : [];
+
+    if (data.deadline) {
+      $('inputDeadline').value = data.deadline;
+    } else {
+      $('inputDeadline').value = '';
+    }
+
     renderSummary(data.summary || {});
     renderAdminTable();
   } catch (err) {
@@ -1206,116 +1211,115 @@ async function handleAdminChangePassword() {
   }
 }
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxhngXz5IXZ-Oge8Ro3pkSCs4uzssxQGUbZX5kX4AjUl1fFIj2qWRw7QZRxez8eNrpV/exec'; // Hãy đổi thành URL Web App triển khai từ Apps Script
+/* ========================= ADMIN ACTIONS ========================= */
 
-// 1. Khi tải trang Dashboard Admin lên, nạp thời gian hạn chót cũ vào ô Input
-function loadDashboardData() {
+async function saveDeadline() {
+  const btn = $('btnSaveDeadline');
+  const deadline = $('inputDeadline').value;
   const token = localStorage.getItem('adminToken');
-  
-  fetch(SCRIPT_URL, {
-    method: 'POST',
-    body: JSON.stringify({ action: 'adminDashboard', token: token })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.ok) {
-      // Đổ dữ liệu thời gian đóng link lưu từ máy chủ vào ô nhập liệu
-      if(data.deadline) {
-         document.getElementById('inputDeadline').value = data.deadline;
+
+  if (!token) {
+    showSection('adminLoginSection');
+    return;
+  }
+
+  if (!deadline) {
+    alert('Vui lòng chọn ngày giờ hợp lệ!');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Đang lưu...';
+
+  try {
+    const data = await api('adminSetDeadline', {
+      token: token,
+      deadline: deadline
+    });
+
+    if (!data.ok) {
+      if (data.error === 'UNAUTHORIZED') {
+        clearAdminSession();
+        showSection('adminLoginSection');
+        return;
       }
-      // Đoạn mã render bảng danh sách nhân viên cũ của bạn...
+      throw new Error(data.message || 'Không thể lưu thời hạn.');
     }
-  });
+
+    alert(data.message || 'Đã cập nhật thời gian đóng biểu mẫu.');
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Lưu cài đặt';
+  }
 }
 
-// 2. Sự kiện lưu thời hạn mới từ giao diện Admin
-document.getElementById('btnSaveDeadline').addEventListener('click', function() {
-  const deadlineValue = document.getElementById('inputDeadline').value; // Dạng chuỗi YYYY-MM-DDTHH:mm
+async function downloadExcel() {
+  const btn = $('btnDownloadExcel');
   const token = localStorage.getItem('adminToken');
-  
-  if(!deadlineValue) return alert('Vui lòng chọn ngày giờ hợp lệ!');
-  
-  this.innerText = 'Đang lưu...';
-  
-  fetch(SCRIPT_URL, {
-    method: 'POST',
-    body: JSON.stringify({
-      action: 'adminSetDeadline',
-      token: token,
-      deadline: deadlineValue
-    })
-  })
-  .then(res => res.json())
-  .then(data => {
-    this.innerText = 'Lưu cấu hình';
-    if(data.ok) {
-      alert('Đã cập nhật thời gian đóng liên kết mới thành công!');
-    } else {
-      alert('Lỗi: ' + data.message);
-    }
-  });
-});
 
-// 3. Sự kiện tải file Excel từ Apps Script chuyển về máy
-// Xử lý sự kiện Xuất Excel tự động chia cột không cảnh báo độc hại
-document.getElementById('btnDownloadExcel').addEventListener('click', function() {
-  const token = localStorage.getItem('adminToken');
-  this.innerText = 'Đang xuất file Excel...';
-  this.disabled = true;
+  if (!token) {
+    showSection('adminLoginSection');
+    return;
+  }
 
-  fetch(SCRIPT_URL, {
-    method: 'POST',
-    body: JSON.stringify({ action: 'adminDownloadExcel', token: token })
-  })
-  .then(res => res.json())
-  .then(data => {
-    this.innerText = '💾 Xuất Dữ Liệu Excel';
-    this.disabled = false;
-    
-    if (data.ok) {
-      // Giải mã mảng nhị phân từ chuỗi Base64
-      const byteCharacters = atob(data.fileData);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
+  btn.disabled = true;
+  btn.textContent = 'Đang xuất file...';
+
+  try {
+    const data = await api('adminDownloadExcel', {token: token});
+
+    if (!data.ok) {
+      if (data.error === 'UNAUTHORIZED') {
+        clearAdminSession();
+        showSection('adminLoginSection');
+        return;
       }
-      const blob = new Blob([new Uint8Array(byteNumbers)], { type: data.mimeType + ';charset=utf-8;' });
-      
-      // Tạo liên kết ảo tải xuống máy
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = data.fileName;
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      alert('Không thể xuất file: ' + data.message);
+      throw new Error(data.message || 'Không thể xuất file.');
     }
-  })
-  .catch(err => {
-    this.innerText = '💾 Xuất Dữ Liệu Excel';
-    this.disabled = false;
-    alert('Lỗi kết nối mạng, vui lòng kiểm tra lại.');
-  });
-});
 
-// Hàm hỗ trợ chuyển đổi chuỗi base64 thành dữ liệu nhị phân Blob
-function b64toBlob(b64Data, contentType='', sliceSize=512) {
+    const blob = b64toBlob(data.fileData, data.mimeType || 'application/vnd.ms-excel');
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = data.fileName || 'Responses_Export.xls';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(function() {
+      URL.revokeObjectURL(url);
+    }, 1000);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 Xuất Dữ Liệu Excel';
+  }
+}
+
+function b64toBlob(b64Data, contentType, sliceSize) {
+  const type = contentType || 'application/octet-stream';
+  const size = sliceSize || 1024;
   const byteCharacters = atob(b64Data);
   const byteArrays = [];
-  for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
-    const slice = byteCharacters.slice(offset, offset + sliceSize);
+
+  for (let offset = 0; offset < byteCharacters.length; offset += size) {
+    const slice = byteCharacters.slice(offset, offset + size);
     const byteNumbers = new Array(slice.length);
+
     for (let i = 0; i < slice.length; i++) {
       byteNumbers[i] = slice.charCodeAt(i);
     }
-    const byteArray = new Uint8Array(byteNumbers);
-    byteArrays.push(byteArray);
+
+    byteArrays.push(new Uint8Array(byteNumbers));
   }
-  return new Blob(byteArrays, {type: contentType});
+
+  return new Blob(byteArrays, {type: type});
 }
-  
+
 async function handleAdminLogout() {
   const token = localStorage.getItem('adminToken');
 
@@ -1349,6 +1353,10 @@ document.addEventListener('DOMContentLoaded', function() {
   $('adminPass').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') handleAdminLogin();
   });
+
+  $('btnSaveDeadline').addEventListener('click', saveDeadline);
+  $('btnRefresh').addEventListener('click', loadAdminDashboard);
+  $('btnDownloadExcel').addEventListener('click', downloadExcel);
 });
 </script>
 </body>

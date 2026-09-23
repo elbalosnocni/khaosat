@@ -431,13 +431,13 @@ th{background:#f8fafc;position:sticky;top:0}
         <div class="row align-items-center">
           <!-- Chọn thời gian đóng biểu mẫu -->
           <div class="col-md-7 d-flex align-items-center">
-            <label for="inputDeadline" class="font-weight-bold mr-2 mb-0" style="white-space: nowrap; color: #333;">Hạn chót đóng link:</label>
+            <label for="inputDeadline" class="font-weight-bold mr-2 mb-0" style="white-space: nowrap; color: #333;">Hạn chót đóng biểu mẫu:</label>
             <input type="datetime-local" id="inputDeadline" class="form-control mr-2" style="max-width: 240px;">
             <button id="btnSaveDeadline" class="btn btn-primary btn-sm px-3">Lưu cài đặt</button>
           </div>
 
         <!-- Các nút thao tác -->
-          <div class="col-md-5 text-right">
+      <div class="col-md-5 text-right">
             <button id="btnRefresh" class="btn btn-secondary btn-sm mr-1">Làm mới</button>
             <button id="btnDownloadExcel" class="btn btn-success btn-sm">💾 Xuất Dữ Liệu Excel</button>
           </div>
@@ -1261,9 +1261,10 @@ document.getElementById('btnSaveDeadline').addEventListener('click', function() 
 });
 
 // 3. Sự kiện tải file Excel từ Apps Script chuyển về máy
+// Xử lý sự kiện Xuất Excel tự động chia cột không cảnh báo độc hại
 document.getElementById('btnDownloadExcel').addEventListener('click', function() {
   const token = localStorage.getItem('adminToken');
-  this.innerText = 'Đang trích xuất...';
+  this.innerText = 'Đang xuất file Excel...';
   this.disabled = true;
 
   fetch(SCRIPT_URL, {
@@ -1272,29 +1273,34 @@ document.getElementById('btnDownloadExcel').addEventListener('click', function()
   })
   .then(res => res.json())
   .then(data => {
-    this.innerText = '💾 Xuất File Excel';
+    this.innerText = '💾 Xuất Dữ Liệu Excel';
     this.disabled = false;
     
     if (data.ok) {
+      // Giải mã mảng nhị phân từ chuỗi Base64
       const byteCharacters = atob(data.fileData);
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) {
         byteNumbers[i] = byteCharacters.charCodeAt(i);
       }
-      const blob = new Blob([new Uint8Array(byteNumbers)], { type: data.mimeType });
+      const blob = new Blob([new Uint8Array(byteNumbers)], { type: data.mimeType + ';charset=utf-8;' });
       
+      // Tạo liên kết ảo tải xuống máy
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = data.fileName;
+      
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
     } else {
       alert('Không thể xuất file: ' + data.message);
     }
   })
   .catch(err => {
-    this.innerText = '💾 Xuất File Excel';
+    this.innerText = '💾 Xuất Dữ Liệu Excel';
     this.disabled = false;
-    alert('Lỗi mạng, vui lòng thử lại.');
+    alert('Lỗi kết nối mạng, vui lòng kiểm tra lại.');
   });
 });
 

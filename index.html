@@ -946,6 +946,7 @@ function resetEmployeeForm() {
   $('danToc').value = '';
   $('tonGiao').value = '';
   $('diaChiThuongTru').value = '';
+  $('diaChiTamTru').value = '';
   $('trinhDoHocvan').value = '';
   $('trinhDoChuyenMon').value = '';
   resetMienGiam();
@@ -974,6 +975,7 @@ async function submitForm() {
     danToc: $('danToc').value,
     tonGiao: $('tonGiao').value,
     diaChiThuongTru: $('diaChiThuongTru').value,
+    diaChiTamTru: $('diaChiTamTru').value,
     trinhDoHocVan: $('trinhDoHocVan').value,
     trinhDoChuyenMon: $('trinhDoChuyenMon').value,
     mienGiam: getSelectedMienGiam().join('; ')

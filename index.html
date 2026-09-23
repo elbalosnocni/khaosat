@@ -1194,6 +1194,61 @@ async function handleAdminChangePassword() {
   }
 }
 
+document.getElementById('btnDownloadExcel').addEventListener('click', function() {
+  const token = localStorage.getItem('adminToken'); // Thay thế bằng cách lấy token thực tế của bạn
+  
+  // Hiển thị trạng thái đang xử lý
+  this.innerText = 'Đang tải...';
+  this.disabled = true;
+
+  fetch('URL_WEB_APP_CUA_BAN', {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'adminDownloadExcel',
+      token: token
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    this.innerText = 'Xuất File Excel';
+    this.disabled = false;
+    
+    if (data.ok) {
+      // Giải mã dữ liệu base64 nhận được từ Apps Script và kích hoạt tải xuống trình duyệt
+      const blob = b64toBlob(data.fileData, data.mimeType);
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = data.fileName;
+      link.click();
+      URL.revokeObjectURL(blobUrl);
+    } else {
+      alert('Lỗi: ' + data.message);
+    }
+  })
+  .catch(err => {
+    this.innerText = 'Xuất File Excel';
+    this.disabled = false;
+    alert('Không thể kết nối đến máy chủ.');
+  });
+});
+
+// Hàm hỗ trợ chuyển đổi chuỗi base64 thành dữ liệu nhị phân Blob
+function b64toBlob(b64Data, contentType='', sliceSize=512) {
+  const byteCharacters = atob(b64Data);
+  const byteArrays = [];
+  for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+    const slice = byteCharacters.slice(offset, offset + sliceSize);
+    const byteNumbers = new Array(slice.length);
+    for (let i = 0; i < slice.length; i++) {
+      byteNumbers[i] = slice.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    byteArrays.push(byteArray);
+  }
+  return new Blob(byteArrays, {type: contentType});
+}
+  
 async function handleAdminLogout() {
   const token = localStorage.getItem('adminToken');
 

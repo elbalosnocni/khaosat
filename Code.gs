@@ -275,7 +275,7 @@ function submitForm_(b) {
     TonGiao: fields.tonGiao,
     DiaChiThuongTru: fields.diaChiThuongTru,
     DiaChiTamTru: fields.diaChiTamTru,
-    TrinhDoHocVan: fields.trinhDoHocvan,
+    TrinhDoHocVan: fields.trinhDoHocVan,
     TrinhDoChuyenMon: fields.trinhDoChuyenMon,
     MienGiam: fields.mienGiam,
     Status: 'Da hoan tat',

@@ -47,7 +47,7 @@ function setup() {
   ensureSheet_(ss, CONFIG.RESPONSE_SHEET, [
     'Timestamp', 'SubmissionId', 'MaNV', 'HoTen', 'CCCD', 'Consent',
     'NgaySinh', 'GioiTinh', 'DanToc', 'TonGiao', 'DiaChiThuongTru', 'DiaChiTamTru',
-    'TrinhDoHocVan', 'TrinhDoChuyenMon', 'MienGiam', 'Status', 'UpdatedAt'
+    'TrinhDoVanHoa', 'TrinhDoChuyenMon', 'MienGiam', 'Status', 'UpdatedAt'
   ]);
   ensureSheet_(ss, CONFIG.ADMIN_SHEET, [
     'Username', 'PasswordHash', 'PasswordSalt', 'Active', 'CreatedAt', 'UpdatedAt'
@@ -260,7 +260,7 @@ function submitForm_(b) {
     tonGiao: clean_(b.tonGiao),
     diaChiThuongTru: clean_(b.diaChiThuongTru),
     diaChiTamTru: clean_(b.diaChiTamTru),
-    trinhDoHocVan: clean_(b.trinhDoHocVan),
+    trinhDoVanHoa: clean_(b.trinhDoVanHoa),
     trinhDoChuyenMon: clean_(b.trinhDoChuyenMon),
     mienGiam: normalizeMienGiam_(b.mienGiam)
   };
@@ -301,7 +301,7 @@ function submitForm_(b) {
     TonGiao: fields.tonGiao,
     DiaChiThuongTru: fields.diaChiThuongTru,
     DiaChiTamTru: fields.diaChiTamTru,
-    TrinhDoHocVan: fields.trinhDoHocVan,
+    TrinhDoVanHoa: fields.trinhDoVanHoa,
     TrinhDoChuyenMon: fields.trinhDoChuyenMon,
     MienGiam: fields.mienGiam,
     Status: 'Da hoan tat',
@@ -745,7 +745,7 @@ return {
 MaNV: String(r.MaNV || ''), HoTen: String(r.HoTen || ''), Consent: String(r.Consent || ''),
 NgaySinh: String(r.NgaySinh || ''), GioiTinh: String(r.GioiTinh || ''), DanToc: String(r.DanToc || ''),
 TonGiao: String(r.TonGiao || ''), DiaChiThuongTru: String(r.DiaChiThuongTru || ''), DiaChiTamTru: String(r.DiaChiTamTru || ''),
-TrinhDoHocVan: String(r.TrinhDoHocVan || ''), TrinhDoChuyenMon: String(r.TrinhDoChuyenMon || ''),
+TrinhDoVanHoa: String(r.TrinhDoVanHoa || ''), TrinhDoChuyenMon: String(r.TrinhDoChuyenMon || ''),
 MienGiam: String(r.MienGiam || ''), Status: String(r.Status || ''), UpdatedAt: formatDate_(r.UpdatedAt || r.Timestamp)
 };
 }
@@ -773,4 +773,3 @@ function safeMessage_(e) { return String(e && e.message ? e.message : e).slice(0
 function cachePutJson_(key, value, seconds) { try { CacheService.getScriptCache().put(key, JSON.stringify(value), seconds); } catch (err) { } }
 function clearDataCaches_() { const cache = CacheService.getScriptCache(); cache.remove('employees:v2'); cache.remove('responses:v3'); }
 function json_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
-

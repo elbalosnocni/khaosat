@@ -402,11 +402,11 @@ th{background:#f8fafc;position:sticky;top:0}
        <label for="diaChiTamTru">Địa chỉ hiện tại/ tạm trú <span class="required">*</span></label>
       <textarea id="diaChiTamTru" maxlength="2000" placeholder="Nhập đầy đủ địa chỉ hiện tại/tạm trú"></textarea>
 
-      <label for="trinhDoHocVan">Trình độ Học vấn</label>
-      <input id="trinhDoHocVan" type="text" maxlength="300" placeholder="Nhập trình độ học vấn (Ví dụ: lớp 6/12)">
+      <label for="trinhDoVanHoa">Trình độ Văn Hóa</label>
+      <input id="trinhDoVanHoa" type="text" maxlength="300" placeholder="Nhập trình độ văn hóa (Từ lớp 1 đến 12). Ví dụ ghi: lớp 6/12">
 
       <label for="trinhDoChuyenMon">Trình độ Chuyên môn</label>
-      <input id="trinhDoChuyenMon" type="text" maxlength="300" placeholder="Nhập trình độ chuyên môn">
+      <input id="trinhDoChuyenMon" type="text" maxlength="300" placeholder="Nhập trình độ chuyên môn. Ví dụ: Cao đẳng Kế toán">
 
       <label>Thông tin miễn, giảm theo <a href="https://datafiles.chinhphu.vn/cpp/files/vbpq/2025/4/16-btc.pdf" class="btn-zalo">Thông tư số 16/2025/TT-BTC</a></label>
       <div class="multi-select" id="mienGiamBox">
@@ -996,7 +996,7 @@ function resetEmployeeForm() {
   $('tonGiao').value = '';
   $('diaChiThuongTru').value = '';
   $('diaChiTamTru').value = '';
-  $('trinhDoHocVan').value = '';
+  $('trinhDoVanHoa').value = '';
   $('trinhDoChuyenMon').value = '';
   resetMienGiam();
   $('hoTen').value = '';
@@ -1025,7 +1025,7 @@ async function submitForm() {
     tonGiao: $('tonGiao').value,
     diaChiThuongTru: $('diaChiThuongTru').value,
     diaChiTamTru: $('diaChiTamTru').value,
-    trinhDoHocVan: $('trinhDoHocVan').value,
+    trinhDoVanHoa: $('trinhDoVanHoa').value,
     trinhDoChuyenMon: $('trinhDoChuyenMon').value,
     mienGiam: getSelectedMienGiam().join('; ')
   };

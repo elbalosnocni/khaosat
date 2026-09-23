@@ -400,41 +400,55 @@ return json_({ ok: false, error: 'INVALID_FORMAT', message: 'Định dạng th�
 PropertiesService.getScriptProperties().setProperty(CONFIG.DEADLINE_PROPERTY, newDeadline);
 return json_({ ok: true, message: 'Cập nhật thời hạn đóng liên kết thành công!' });
 }
-// HÀM XUẤT FILE MỚI: Đọc mảng trực tiếp từ Sheet Responses chuyển sang chuỗi văn bản dữ liệu an toàn để tránh lỗi UrlFetch
+// HÀM XUẤT FILE EXCEL MỚI: Định dạng CSV UTF-8 chuẩn chia cột tự động, không lo lỗi phân quyền, không bị cảnh báo định dạng
 function adminDownloadExcel_(b) {
-const session = requireAdminSession_(b.token);
-if (!session) return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Phiên quản trị viên đã hết hạn.' });
-try {
-const sheet = getSheet_(CONFIG.RESPONSE_SHEET);
-const data = sheet.getDataRange().getDisplayValues(); // Đọc dạng chuỗi hiển thị đã định dạng sẵn trên sheet
-if (data.length === 0) throw new Error('Không có dữ liệu trong sheet phản hồi.');
-// Xây dựng chuỗi văn bản bảng dữ liệu thô (TSV) để tải về trình duyệt tự biên dịch thành tập tin Excel sạch
-const tsvLines = [];
-for (let i = 0; i < data.length; i++) {
-const escapedRow = data[i].map(function(cell) {
-let str = String(cell || '');
-if (str.indexOf('"') >= 0 || str.indexOf('\n') >= 0 || str.indexOf('\t') >= 0) {
-str = '"' + str.replace(/"/g, '""') + '"';
+  const session = requireAdminSession_(b.token);
+  if (!session) return json_({ ok: false, error: 'UNAUTHORIZED', message: 'Phiên quản trị viên đã hết hạn.' });
+
+  try {
+    const sheet = getSheet_(CONFIG.RESPONSE_SHEET);
+    const data = sheet.getDataRange().getDisplayValues(); // Đọc chuỗi hiển thị đúng định dạng ngày tháng dd/MM/yyyy trên sheet
+    
+    if (data.length === 0) throw new Error('Không có dữ liệu trong sheet phản hồi.');
+
+    // Xây dựng nội dung file theo cấu trúc CSV chuẩn (Ngăn cách bằng dấu phẩy)
+    const csvLines = [];
+    for (let i = 0; i < data.length; i++) {
+      const escapedRow = data[i].map(function(cell) {
+        let str = String(cell || '');
+        // Nếu trong cell có dấu phẩy, dấu nháy kép hoặc xuống dòng thì bọc trong cặp nháy kép theo tiêu chuẩn CSV
+        if (str.indexOf('"') >= 0 || str.indexOf('\n') >= 0 || str.indexOf(',') >= 0) {
+          str = '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+      });
+      csvLines.push(escapedRow.join(','));
+    }
+    
+    const textContent = csvLines.join('\r\n');
+    
+    // Thêm ký tự BOM (Byte Order Mark) để Excel nhận diện chữ Tiếng Việt có dấu không bị lỗi font
+    const bom = [0xEF, 0xBB, 0xBF];
+    const encodedText = Utilities.newBlob('').setDataFromString(textContent, 'UTF-8').getBytes();
+    
+    // Ghép mảng byte BOM và byte nội dung văn bản lại với nhau
+    const finalBytes = bom.concat(encodedText);
+    const base64Data = Utilities.base64Encode(finalBytes);
+    
+    // Đổi đuôi mở rộng sang .csv để Microsoft Excel tự động nhận diện mở trực tiếp chia cột
+    const fileName = 'Responses_Export_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.csv';
+
+    return json_({
+      ok: true,
+      fileName: fileName,
+      fileData: base64Data,
+      mimeType: 'text/csv'
+    });
+  } catch (err) {
+    return json_({ ok: false, error: 'EXPORT_FAILED', message: 'Lỗi tạo dữ liệu Excel: ' + err.message });
+  }
 }
-return str;
-});
-tsvLines.push(escapedRow.join('\t'));
-}
-const textContent = tsvLines.join('\r\n');
-// Mã hóa Base64 chuỗi ký tự UTF-8 kèm mã đánh dấu BOM (Byte Order Mark) giúp tránh lỗi font tiếng Việt khi mở bằng Excel
-const bomAndContent = '\uFEFF' + textContent;
-const base64Data = Utilities.base64Encode(bomAndContent, Utilities.Charset.UTF_8);
-const fileName = 'Responses_Export_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.xls';
-return json_({
-ok: true,
-fileName: fileName,
-fileData: base64Data,
-mimeType: 'application/vnd.ms-excel'
-});
-} catch (err) {
-return json_({ ok: false, error: 'EXPORT_FAILED', message: 'Lỗi tạo dữ liệu: ' + err.message });
-}
-}
+
 function adminChangePassword_(b) {
 const session = requireAdminSession_(b.token);
 if (!session) return json_({ ok: false, error: 'UNAUTHORIZED' });

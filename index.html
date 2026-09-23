@@ -231,6 +231,33 @@ th{background:#f8fafc;position:sticky;top:0}
   text-decoration:none;
 }
 
+.qr-login-box {
+  text-align: center;
+  margin: 20px auto 0;
+  padding: 14px;
+  max-width: 230px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.qr-login-box img {
+  display: block;
+  width: 180px;
+  height: 180px;
+  margin: 10px auto;
+}
+
+.qr-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.qr-url {
+  font-size: 12px;
+  color: var(--muted);
+}
+  
 </style>
 </head>
 
@@ -260,6 +287,19 @@ th{background:#f8fafc;position:sticky;top:0}
              autocomplete="off" placeholder="Nhập số CCCD">
       <div id="employeeLoginError" class="error"></div>
 
+      <div class="qr-login-box">
+        <div class="qr-title">📱 Quét QR để mở trang trên điện thoại</div>
+      
+        <img
+          src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https%3A%2F%2Fkstt.pages.dev"
+          alt="QR Code mở trang kê khai"
+          width="180"
+          height="180"
+        >
+      
+        <div class="qr-url">kstt.pages.dev</div>
+      </div>
+      
       <div class="actions">
         <button id="btnTiepTuc" type="button" onclick="handleEmployeeLogin()">Tiếp tục</button>
         <button type="button" class="secondary" onclick="showSection('adminLoginSection')">Đăng nhập Admin</button>
